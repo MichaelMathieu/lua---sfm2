@@ -114,12 +114,14 @@ static int RemoveEgoMotion(lua_State *L) {
   THTensor<float > K      = FromLuaStack<THTensor<float > >(L, 2);
   THTensor<float > Rraw   = FromLuaStack<THTensor<float > >(L, 3);
   THTensor<THreal> output = FromLuaStack<THTensor<THreal> >(L, 4);
+  THTensor<THreal> mask   = FromLuaStack<THTensor<THreal> >(L, 5);
 
   THcheckSize(K, 3, 3);
-  assert((R.size(0) == 3) && (R.size(1) == 3));
-  assert((input.size(0) == output.size(0)) &&
-	 (input.size(1) == output.size(1)) && 
-	 (input.size(2) == output.size(2)));
+  THassert((Rraw.size(0) == 3) && (Rraw.size(1) == 3));
+  THassert((input.size(0) == output.size(0)) &&
+	   (input.size(1) == output.size(1)) && 
+	   (input.size(2) == output.size(2)));
+  THassert((mask.size(0) == output.size(1)) && (mask.size(1) == output.size(2)));
 
   Mat K_cv = THTensorToMat<float>(K);
   Mat R_cv = K_cv * THTensorToMat<float>(Rraw) * K_cv.inv();
@@ -129,9 +131,11 @@ static int RemoveEgoMotion(lua_State *L) {
   int w = input.size(2);
   THreal* input_p = input.data();
   THreal* output_p = output.data();
+  THreal* mask_p = mask.data();
   float* R_p = R_cv.ptr<float>(0);
   const long* is = input.stride();
   const long* os = output.stride();
+  const long* ms = mask.stride();
   
   int i, j, k, x, y;
   float xf, yf, wf;
@@ -142,11 +146,13 @@ static int RemoveEgoMotion(lua_State *L) {
       wf = R_p[6] * j + R_p[7] * i + R_p[8];
       x = round(xf/wf);
       y = round(yf/wf);
-      if ((x >= 0) && (y >= 0) && (x < w) && (y < h))
+      if ((x >= 0) && (y >= 0) && (x < w) && (y < h)) {
 	for (k = 0; k < nchannels; ++k)
 	  output_p[k*os[0] + i*os[1] + j*os[2] ] = input_p[k*is[0] + y*is[1] + x*is[2] ];
+	mask_p[i*ms[0] + j*ms[1]] = 1.0;
+      }
     }
-
+  
   return 1;
 }
 

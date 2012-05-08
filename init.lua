@@ -67,8 +67,9 @@ end
 
 function sfm2.removeEgoMotion(im, K, R)
    local ret = torch.Tensor(im:size()):zero()
-   im.libsfm2.removeEgoMotion(im, K, R, ret)
-   return ret
+   local mask = torch.Tensor(im:size(2), im:size(3)):zero()
+   im.libsfm2.removeEgoMotion(im, K, R, ret, mask)
+   return ret, mask
 end
 
 function sfm2.chessboardCalibrate(images, pattern_rows, pattern_cols)
