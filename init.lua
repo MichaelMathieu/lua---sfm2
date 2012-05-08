@@ -58,11 +58,11 @@ function sfm2.getEgoMotion(...)
    )
    local R = torch.FloatTensor(3,3)
    local T = torch.FloatTensor(3)
-   self.im1.libsfm2.getEgoMotion(self.im1, self.im2, self.K, R, T, self.maxPoints,
-				 self.pointsQuality, self.pointsMinDistance,
-				 self.featuresBlockSize, self.trackerWinSize,
-				 self.trackerMaxLevel, self.ransacMaxDist)
-   return R, T
+   local nFound, nInliers = self.im1.libsfm2.getEgoMotion(
+      self.im1, self.im2, self.K, R, T, self.maxPoints, self.pointsQuality,
+      self.pointsMinDistance, self.featuresBlockSize, self.trackerWinSize,
+      self.trackerMaxLevel, self.ransacMaxDist)
+   return R, T, nFound, nInliers
 end
 
 function sfm2.removeEgoMotion(im, K, R)

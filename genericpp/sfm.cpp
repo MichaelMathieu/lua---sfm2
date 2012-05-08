@@ -64,7 +64,7 @@ static int InverseMatrix(lua_State *L) {
 
   copyMat<THreal, THreal>(A_cv.inv(), B_cv);
   
-  return 1;
+  return 0;
 }
 
 //GetEgoMotion(image1(double), image2(double), K(float), Kinv(float), R_out(float),T_out(float))
@@ -99,12 +99,15 @@ static int GetEgoMotion(lua_State *L) {
   matf R_out_cv(3, 3, R_out.data());
   matf T_out_cv(3, 1, T_out.data());
 
+  int nFound, nInliers;
   getEgoMotionFromImages(im1_cv, im2_cv, K_cv, Kinv_cv, R_out_cv, T_out_cv,
-			 maxPoints_p, pointsQuality_p, pointsMinDistance_p,
-			 featuresBlockSize_p, trackerWinSize_p, trackerMaxLevel_p,
-			 ransacMaxDist_p);
+			 &nFound, &nInliers, maxPoints_p, pointsQuality_p,
+			 pointsMinDistance_p, featuresBlockSize_p, trackerWinSize_p,
+			 trackerMaxLevel_p, ransacMaxDist_p);
 
-  return 1;
+  PushOnLuaStack<int>(L, nFound);
+  PushOnLuaStack<int>(L, nInliers);
+  return 2;
 }
 
 template<typename THreal>
@@ -153,7 +156,7 @@ static int RemoveEgoMotion(lua_State *L) {
       }
     }
   
-  return 1;
+  return 0;
 }
 
 template<typename THreal>
@@ -177,7 +180,7 @@ static int UndistortImage(lua_State* L) {
   
   undistort(input_cv, output_cv, K_cv, distP_cv);
 
-  return 1;
+  return 0;
 }
 
 template<typename THreal>
@@ -212,5 +215,5 @@ static int ChessboardCalibrate(lua_State* L) {
   copyMat<float, THreal>(K_float, K_cv);
   copyMat<float, THreal>(distP_float, distP_cv);
   
-  return 1;
+  return 0;
 }

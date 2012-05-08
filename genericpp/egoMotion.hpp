@@ -5,6 +5,7 @@
 
 void getEgoMotionFromImages(const mat3b & im1, const mat3b & im2, const matf & K,
 			    const matf & Kinv, matf & rotation, matf & translation,
+			    int* nFound = NULL, int* nInliers = NULL,
 			    int maxPoints = 500, float pointsQuality = 0.02f,
 			    float pointsMinDistance = 3.0f, int featuresBlockSize = 10,
 			    int trackerWinSize = 5, int trackerMaxLevel = 5,

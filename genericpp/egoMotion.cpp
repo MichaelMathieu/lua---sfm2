@@ -4,6 +4,7 @@
 void getEgoMotionFromImages(const mat3b & im1, const mat3b & im2,
 			    const matf & K, const matf & Kinv,
 			    matf & rotation, matf & translation,
+			    int* nFound, int* nInliers,
 			    int maxPoints, float pointsQuality, float pointsMinDistance,
 			    int featuresBlockSize, int trackerWinSize, int trackerMaxLevel,
 			    float ransacMaxDist) {
@@ -11,8 +12,10 @@ void getEgoMotionFromImages(const mat3b & im1, const mat3b & im2,
   GetTrackedPoints(im1, im2, trackedPoints, maxPoints, pointsQuality, pointsMinDistance,
 		   featuresBlockSize, trackerWinSize, trackerMaxLevel, 100, 1.0f);
   matf fundMat = GetFundamentalMat(trackedPoints, &inliers, ransacMaxDist, 0.99);
-  cout << trackedPoints.size() << " " << inliers.size() << endl;
-  //displayTrackedPoints(im1, inliers);
+  if (nFound)
+    *nFound = trackedPoints.size();
+  if (nInliers)
+    *nInliers = inliers.size();
   matf essMat = K.t() * fundMat * K;
   
   matf p1p = Kinv * inliers[0].getP1();

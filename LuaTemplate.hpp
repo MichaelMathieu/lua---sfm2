@@ -10,6 +10,7 @@ extern "C" {
 }
 #include<THpp.hpp>
 #include<vector>
+#include<string>
 
 template<typename T> inline T FromLuaStack(lua_State* L, int i) {
   THerror("Call of FromLuaStack on a non-implemented type");
@@ -25,6 +26,9 @@ template<> inline float FromLuaStack<float>(lua_State* L, int i) {
 }
 template<> inline double FromLuaStack<double>(lua_State* L, int i) {
   return (double)lua_tonumber(L, i);
+}
+template<> inline std::string FromLuaStack<std::string>(lua_State* L, int i) {
+  return std::string(lua_tostring(L, i));
 }
 template<> inline THTensor<float> FromLuaStack<THTensor<float> >(lua_State* L, int i) {
   return THTensor<float>((TH<float>::CTensor*)luaT_checkudata(L, i, luaT_checktypename2id(L, "torch.FloatTensor")));
@@ -54,9 +58,26 @@ MAKE_FROM_LUA_STACK_TABLE_TEMPLATE(int)
 MAKE_FROM_LUA_STACK_TABLE_TEMPLATE(long)
 MAKE_FROM_LUA_STACK_TABLE_TEMPLATE(float)
 MAKE_FROM_LUA_STACK_TABLE_TEMPLATE(double)
+MAKE_FROM_LUA_STACK_TABLE_TEMPLATE(std::string)
 MAKE_FROM_LUA_STACK_TABLE_TEMPLATE(THTensor<float>)
 MAKE_FROM_LUA_STACK_TABLE_TEMPLATE(THTensor<double>)
 #undef MAKE_FROM_LUA_STACK_TABLE_TEMPLATE
 
+
+template<typename T> inline void PushOnLuaStack(lua_State* L, const T & topush) {
+  THerror("Call of PushOnLuaStack on a non-implemented type");
+}
+template<> inline void PushOnLuaStack<int>(lua_State* L, const int & topush) {
+  lua_pushinteger(L, topush);
+}
+template<> inline void PushOnLuaStack<long int>(lua_State* L, const long int & topush) {
+  lua_pushinteger(L, topush);
+}
+template<> inline void PushOnLuaStack<float>(lua_State* L, const float & topush) {
+  lua_pushnumber(L, topush);
+}
+template<> inline void PushOnLuaStack<double>(lua_State* L, const double & topush) {
+  lua_pushnumber(L, topush);
+}  
 
 #endif
