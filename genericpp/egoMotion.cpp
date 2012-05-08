@@ -22,6 +22,6 @@ void getEgoMotionFromImages(const mat3b & im1, const mat3b & im2,
   TrackedPoint pInFront (p1p(0,0), p1p(1,0), p2p(0,0), p2p(1,0));
   matf P2 = GetExtrinsicsFromEssential(essMat, pInFront);
   
-  rotation = K * P2(Range(0, 3), Range(0, 3)).inv() * Kinv;
+  rotation = P2(Range(0, 3), Range(0, 3)).inv();
   translation = P2(Range(0,3), Range(3,4)); //TODO multiply correctly by K and rotation.inv()
 }

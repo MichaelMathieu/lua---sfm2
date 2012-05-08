@@ -1,7 +1,9 @@
 #include "THpp.hpp"
 
 #include<opencv/cv.h>
+#include "genericpp/common.hpp"
 #include "genericpp/egoMotion.hpp"
+#include "genericpp/calibration.hpp"
 
 template<typename Treal>
 mat3b THTensorToMat3b(const THTensor<Treal> & im) {
@@ -39,16 +41,30 @@ template<typename Treal>
 Mat THTensorToMat(THTensor<Treal> & T) {
   T = T.newContiguous();
   if (T.nDimension() == 1) {
-    return Mat_<Treal>(T.size(0), 1, T.data());
+    return Mat(T.size(0), 1, DataType<Treal>::type, (void*)T.data());
   } else if (T.nDimension() == 2) {
-    return Mat_<Treal>(T.size(0), T.size(1), T.data());
+    return Mat(T.size(0), T.size(1), DataType<Treal>::type, (void*)T.data());
   } else if (T.nDimension() == 3) {
     if (T.size(2) == 3) {
-      return Mat_<Vec<Treal, 3> >(T.size(0), T.size(1), (Vec<Treal, 3>*)(T.data()));
+      return Mat(T.size(0), T.size(1), DataType<Vec<Treal, 3> >::type, (void*)T.data());
     }
   }
   THerror("THTensorToMat: N-d tensors not implemented");
   return matf(0,0); //remove warning
+}
+
+template<typename THreal>
+static int InverseMatrix(lua_State *L) {
+  setLuaState(L);
+  THTensor<THreal> A = FromLuaStack<THTensor<THreal> >(L, 1);
+  THTensor<THreal> B = FromLuaStack<THTensor<THreal> >(L, 2);
+  
+  Mat A_cv = THTensorToMat<THreal>(A);
+  Mat B_cv = THTensorToMat<THreal>(B);
+
+  copyMat<THreal, THreal>(A_cv.inv(), B_cv);
+  
+  return 1;
 }
 
 //GetEgoMotion(image1(double), image2(double), K(float), Kinv(float), R_out(float),T_out(float))
@@ -95,21 +111,25 @@ template<typename THreal>
 static int RemoveEgoMotion(lua_State *L) {
   setLuaState(L);
   THTensor<THreal> input  = FromLuaStack<THTensor<THreal> >(L, 1);
-  THTensor<float > R      = FromLuaStack<THTensor<float > >(L, 2);
-  THTensor<THreal> output = FromLuaStack<THTensor<THreal> >(L, 3);
+  THTensor<float > K      = FromLuaStack<THTensor<float > >(L, 2);
+  THTensor<float > Rraw   = FromLuaStack<THTensor<float > >(L, 3);
+  THTensor<THreal> output = FromLuaStack<THTensor<THreal> >(L, 4);
 
+  THcheckSize(K, 3, 3);
   assert((R.size(0) == 3) && (R.size(1) == 3));
   assert((input.size(0) == output.size(0)) &&
 	 (input.size(1) == output.size(1)) && 
 	 (input.size(2) == output.size(2)));
+
+  Mat K_cv = THTensorToMat<float>(K);
+  Mat R_cv = K_cv * THTensorToMat<float>(Rraw) * K_cv.inv();
   
-  R = R.newContiguous();
   int nchannels = input.size(0);
   int h = input.size(1);
   int w = input.size(2);
   THreal* input_p = input.data();
   THreal* output_p = output.data();
-  float* R_p = R.data();
+  float* R_p = R_cv.ptr<float>(0);
   const long* is = input.stride();
   const long* os = output.stride();
   
@@ -131,7 +151,7 @@ static int RemoveEgoMotion(lua_State *L) {
 }
 
 template<typename THreal>
-static int UndistortImage(lua_State *L) {
+static int UndistortImage(lua_State* L) {
   setLuaState(L);
   THTensor<THreal> input  = FromLuaStack<THTensor<THreal> >(L, 1);
   THTensor<THreal> K      = FromLuaStack<THTensor<THreal> >(L, 2);
@@ -139,7 +159,7 @@ static int UndistortImage(lua_State *L) {
   THTensor<THreal> output = FromLuaStack<THTensor<THreal> >(L, 4);
   
   assert((K.size(0) == 3) && (K.size(1) == 3));
-  assert(distP.size(0) == 5);
+  //assert(distP.size(0) == 5);
   assert((input.size(0) == output.size(0)) &&
 	 (input.size(1) == output.size(1)) && 
 	 (input.size(2) == output.size(2)));
@@ -151,5 +171,40 @@ static int UndistortImage(lua_State *L) {
   
   undistort(input_cv, output_cv, K_cv, distP_cv);
 
+  return 1;
+}
+
+template<typename THreal>
+static int ChessboardCalibrate(lua_State* L) {
+  setLuaState(L);
+  vector<THTensor<THreal> > images = FromLuaStack<vector<THTensor<THreal> > >(L, 1);
+  int                       rows   = FromLuaStack<int>                       (L, 2);
+  int                       cols   = FromLuaStack<int>                       (L, 3);
+  THTensor<THreal>          K      = FromLuaStack<THTensor<THreal> >         (L, 4);
+  THTensor<THreal>          distP  = FromLuaStack<THTensor<THreal> >         (L, 5);
+
+  THcheckSize(K, 3, 3);
+  int distSize = distP.size(0);
+  if ((distSize != 4) && (distSize != 5) && (distSize != 8))
+    THerror("ChessboardCalibrate: distortion parameter size must be 4, 5 or 8");
+  THassert(K.isContiguous());
+  THassert(distP.isContiguous());
+
+  vector<mat3b> images_cv;
+  for (size_t i = 0; i < images.size(); ++i)
+    images_cv.push_back(THTensorToMat3b(images[i]));
+  int h = images_cv[0].size().height;
+  int w = images_cv[0].size().width;
+  Mat K_cv     = THTensorToMat<THreal>(K);
+  Mat distP_cv = THTensorToMat<THreal>(distP);
+  matf K_float, distP_float(distSize,1);
+
+  vector<vector<Point3f> > points3d;
+  vector<vector<Point2f> > points2d;
+  FindChessboardPoints(images_cv, rows, cols, points3d, points2d);
+  K_float = CalibrateFromPoints(points3d, points2d, h, w, &distP_float);
+  copyMat<float, THreal>(K_float, K_cv);
+  copyMat<float, THreal>(distP_float, distP_cv);
+  
   return 1;
 }

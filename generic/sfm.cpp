@@ -21,9 +21,11 @@ extern "C" {
 //
 static const luaL_reg libsfm2_(Main__) [] = 
 {
+  {"inverseMatrix", InverseMatrix<real>},
   {"getEgoMotion", GetEgoMotion<real>},
   {"removeEgoMotion", RemoveEgoMotion<real>},
   {"undistortImage", UndistortImage<real>},
+  {"chessboardCalibrate", ChessboardCalibrate<real>},
   {NULL, NULL}  /* sentinel */
 };
 

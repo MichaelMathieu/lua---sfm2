@@ -17,11 +17,22 @@ const float SQRT2 = sqrt(2);
 
 typedef Mat_<float> matf;
 typedef Mat_<double> matd;
+typedef matf matr;
 typedef Mat_<unsigned char> matb;
 typedef Mat_<Vec3b> mat3b;
 
 template<typename T, typename T2> inline bool epsEqual(T a, T2 b, double eps = 0.01) {
   return (a-eps < b) && (b < a+eps);
+}
+
+// this function is not particularly optimized. Do not use it for large matrices.
+template<typename T1, typename T2>
+inline void copyMat(const Mat & src, Mat & dst) {
+  THassert((src.size().height == dst.size().height) && (src.size().width == dst.size().width));
+  for (int i = 0; i < src.size().height; ++i) {
+    for (int j = 0; j < src.size().width; ++j)
+      dst.at<T2>(i,j) = src.at<T1>(i,j);
+  }
 }
 
 // reads and resizes
