@@ -26,5 +26,5 @@ void getEgoMotionFromImages(const mat3b & im1, const mat3b & im2,
   matf P2 = GetExtrinsicsFromEssential(essMat, pInFront);
   
   rotation = P2(Range(0, 3), Range(0, 3)).inv(); //this is copied because of the inv
-  P2(Range(0,3), Range(3, 4)).copyTo(translation);
+  translation = -rotation * P2(Range(0,3), Range(3, 4)); // same (with *)
 }
