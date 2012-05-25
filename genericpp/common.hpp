@@ -64,7 +64,8 @@ inline matf subMat(const matf & src, int y0, int y1, int x0, int x1) {
   return matf(y1-y0, x1-x0, ((float*)(src.ptr(0)))+y0*src.step1()+x0, src.step);
 }
 
-/*inline matf createTensor(int dim1, int dim2, int dim3) {
+#ifndef OPENCV_2_1
+inline matf createTensor(int dim1, int dim2, int dim3) {
   int dims[3]; //seriously, opencv is the worst...
   dims[0] = dim1;
   dims[1] = dim2;
@@ -79,7 +80,8 @@ inline matf sliceTensor(matf & tensor, int i) {
 }
 inline const matf sliceTensor(const matf & tensor, int i) {
   return matf(tensor.size.p[1], tensor.size.p[2], (float*)tensor.ptr(i));
-  }*/
+}
+#endif
 
 inline matf homogeneous(const matf & p) {
   const int n = p.size().height;

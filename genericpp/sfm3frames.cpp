@@ -3,6 +3,10 @@
 #include "LM.h"
 #include <algorithm>
 
+#ifdef OPENCV_2_1
+#error Trifocal Tensor doens't work with opencv 2.1 . Use 2.3
+#endif
+
 void displayTrackedPoints3(const mat3b & im, const vector<TrackedPoint3> & trackedPoints) {
   mat3b im_cpy;
   im.copyTo(im_cpy);
