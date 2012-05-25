@@ -13,6 +13,13 @@ using namespace std;
 #include <opencv/highgui.h>
 using namespace cv;
 
+#if CV_MAJOR_VERSION != 2
+#error OpenCV version must be 2.x.x
+#endif
+#if CV_MINOR_VERSION < 3
+#define OPENCV_2_1
+#endif
+
 const float SQRT2 = sqrt(2);
 
 typedef Mat_<float> matf;
@@ -28,7 +35,7 @@ template<typename T, typename T2> inline bool epsEqual(T a, T2 b, double eps = 0
 // this function is not particularly optimized. Do not use it for large matrices.
 template<typename T1, typename T2>
 inline void copyMat(const Mat & src, Mat & dst) {
-  THassert((src.size().height == dst.size().height) && (src.size().width == dst.size().width));
+  //THassert((src.size().height == dst.size().height) && (src.size().width == dst.size().width));
   for (int i = 0; i < src.size().height; ++i) {
     for (int j = 0; j < src.size().width; ++j)
       dst.at<T2>(i,j) = src.at<T1>(i,j);
@@ -57,7 +64,7 @@ inline matf subMat(const matf & src, int y0, int y1, int x0, int x1) {
   return matf(y1-y0, x1-x0, ((float*)(src.ptr(0)))+y0*src.step1()+x0, src.step);
 }
 
-inline matf createTensor(int dim1, int dim2, int dim3) {
+/*inline matf createTensor(int dim1, int dim2, int dim3) {
   int dims[3]; //seriously, opencv is the worst...
   dims[0] = dim1;
   dims[1] = dim2;
@@ -72,7 +79,7 @@ inline matf sliceTensor(matf & tensor, int i) {
 }
 inline const matf sliceTensor(const matf & tensor, int i) {
   return matf(tensor.size.p[1], tensor.size.p[2], (float*)tensor.ptr(i));
-}
+  }*/
 
 inline matf homogeneous(const matf & p) {
   const int n = p.size().height;

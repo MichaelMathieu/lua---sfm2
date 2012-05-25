@@ -12,9 +12,23 @@ void GetTrackedPoints(const mat3b & im1, const mat3b & im2, vector<TrackedPoint>
   const double derivLambda = 0;
   const int flags = 0;
   assert(im1.size() == im2.size());
-  Mat corners1, corners2, status, err;
   matb im1gray;
   cvtColor(im1, im1gray, CV_BGR2GRAY);
+#ifdef OPENCV_2_1
+  Mat mask;
+  vector<Point2f> corners1, corners2;
+  vector<uchar> status;
+  vector<float> err;
+  goodFeaturesToTrack(im1gray, corners1, maxCorners, qualityLevel, minDistance,
+		      mask, blockSize, useHarrisDetector, k);
+  calcOpticalFlowPyrLK(im1, im2, corners1, corners2, status, err, winSize, maxLevel,
+		       criteria, derivLambda, flags);
+  for (int i = 0; i < (signed)corners1.size(); ++i)
+    if (status[i])
+      points_out.push_back(TrackedPoint(corners1[i].x, corners1[i].y,
+					corners2[i].x, corners2[i].y));
+#else
+  Mat corners1, corners2, status, err;
   goodFeaturesToTrack(im1gray, corners1, maxCorners, qualityLevel, minDistance,
 		      noArray(), blockSize, useHarrisDetector, k);
   calcOpticalFlowPyrLK(im1, im2, corners1, corners2, status, err, winSize, maxLevel,
@@ -23,6 +37,7 @@ void GetTrackedPoints(const mat3b & im1, const mat3b & im2, vector<TrackedPoint>
     if (status.at<unsigned char>(i,0))
       points_out.push_back(TrackedPoint(corners1.at<Vec2f>(i,0)[0],corners1.at<Vec2f>(i,0)[1],
 					corners2.at<Vec2f>(i,0)[0],corners2.at<Vec2f>(i,0)[1]));
+#endif
 }
 
 #if 0 //Not used for now.
@@ -105,6 +120,22 @@ Mat GetFundamentalMat(const vector<TrackedPoint> & trackedPoints,
   //const int method = FM_LMEDS;
   const double param1 = ransac_max_dist;
   const double param2 = ransac_p;
+#ifdef OPENCV_2_1
+  matf pts1(trackedPoints.size(), 2), pts2(trackedPoints.size(), 2);
+  for (size_t i = 0; i < trackedPoints.size(); ++i) {
+    pts1(i, 0) = trackedPoints[i].x1;
+    pts2(i, 1) = trackedPoints[i].y1;
+    pts2(i, 0) = trackedPoints[i].x2;
+    pts2(i, 1) = trackedPoints[i].y2;
+  }
+  CvMat pts1cv = pts1;
+  CvMat pts2cv = pts2;
+  matf mat(3, 3);
+  CvMat matcv = mat;
+  Mat_<uchar> status(1, trackedPoints.size());
+  CvMat statuscv = status;
+  cvFindFundamentalMat(&pts1cv, &pts2cv, &matcv, method, param1, param2, &statuscv);
+#else
   Mat_<Vec2f> pts1(trackedPoints.size(), 1), pts2(trackedPoints.size(), 1);
   for (size_t i = 0; i < trackedPoints.size(); ++i) {
     pts1(i, 0) = Vec2f(trackedPoints[i].x1, trackedPoints[i].y1);
@@ -112,11 +143,15 @@ Mat GetFundamentalMat(const vector<TrackedPoint> & trackedPoints,
   }
   vector<unsigned char> status;
   Mat mat = findFundamentalMat(pts1, pts2, method, param1, param2, status);
+#endif
   if (inliers) {
     inliers->clear();
     for (size_t i = 0; i < trackedPoints.size(); ++i)
+#ifdef OPENCV_2_1
+      if (status(0, i))
+#else
       if (status[i])
-	//inliers->push_back(trackedPoints_[i]);
+#endif
 	inliers->push_back(trackedPoints[i]);
   }
   //return H_out[1].inv().t() * (matf)mat * H_out[0].inv();
