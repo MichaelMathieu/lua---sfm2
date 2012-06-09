@@ -4,6 +4,7 @@
 #include "genericpp/common.hpp"
 #include "genericpp/egoMotion.hpp"
 #include "genericpp/calibration.hpp"
+#include "genericpp/sfm2frames.hpp"
 
 template<typename Treal>
 mat3b THTensorToMat3b(const THTensor<Treal> & im) {
@@ -71,26 +72,28 @@ static int InverseMatrix(lua_State *L) {
 template<typename THreal>
 static int GetEgoMotion(lua_State *L) {
   setLuaState(L);
-  THTensor<THreal> image1 = FromLuaStack<THTensor<THreal> >(L, 1);
-  THTensor<THreal> image2 = FromLuaStack<THTensor<THreal> >(L, 2);
-  THTensor<float > K      = FromLuaStack<THTensor<float > >(L, 3);
-  THTensor<float > R_out  = FromLuaStack<THTensor<float > >(L, 4);
-  THTensor<float > T_out  = FromLuaStack<THTensor<float > >(L, 5);
-  int   maxPoints_p         = FromLuaStack<int>  (L, 6);
-  float pointsQuality_p     = FromLuaStack<float>(L, 7);
-  float pointsMinDistance_p = FromLuaStack<float>(L, 8);
-  int   featuresBlockSize_p = FromLuaStack<int>  (L, 9);
-  int   trackerWinSize_p    = FromLuaStack<int>  (L, 10);
-  int   trackerMaxLevel_p   = FromLuaStack<int>  (L, 11);
-  float ransacMaxDist_p     = FromLuaStack<float>(L, 12);
+  THTensor<THreal> image1       = FromLuaStack<THTensor<THreal> >(L, 1);
+  THTensor<THreal> image2       = FromLuaStack<THTensor<THreal> >(L, 2);
+  THTensor<float > K            = FromLuaStack<THTensor<float > >(L, 3);
+  THTensor<float > R_out        = FromLuaStack<THTensor<float > >(L, 4);
+  THTensor<float > T_out        = FromLuaStack<THTensor<float > >(L, 5);
+  THTensor<float > fundmat_out  = FromLuaStack<THTensor<float > >(L, 6);
+  int   maxPoints_p             = FromLuaStack<int>  (L, 7);
+  float pointsQuality_p         = FromLuaStack<float>(L, 8);
+  float pointsMinDistance_p     = FromLuaStack<float>(L, 9);
+  int   featuresBlockSize_p     = FromLuaStack<int>  (L, 10);
+  int   trackerWinSize_p        = FromLuaStack<int>  (L, 11);
+  int   trackerMaxLevel_p       = FromLuaStack<int>  (L, 12);
+  float ransacMaxDist_p         = FromLuaStack<float>(L, 13);
 
-  assert((K.size(0) == 3) && (K.size(1) == 3) &&
-	 (R_out.size(0) == 3) && (R_out.size(1) == 3) &&
-	 (T_out.size(0) == 3));
-  assert((image1.size(0) == image2.size(0)) &&
-	 (image1.size(1) == image2.size(1)) && 
-	 (image1.size(2) == image2.size(2)));
-  assert(image1.size(0) == 3);
+  THassert((K.size(0) == 3) && (K.size(1) == 3) &&
+	   (R_out.size(0) == 3) && (R_out.size(1) == 3) &&
+	   (T_out.size(0) == 3));
+  THassert((image1.size(0) == image2.size(0)) &&
+	   (image1.size(1) == image2.size(1)) && 
+	   (image1.size(2) == image2.size(2)));
+  THassert(image1.size(0) == 3);
+  THcheckSize(fundmat_out, 3, 3);
 
   mat3b im1_cv = THTensorToMat3b(image1);
   mat3b im2_cv = THTensorToMat3b(image2);
@@ -98,9 +101,10 @@ static int GetEgoMotion(lua_State *L) {
   matf Kinv_cv = K_cv.inv();
   matf R_out_cv(3, 3, R_out.data());
   matf T_out_cv(3, 1, T_out.data());
+  matf fundmat_cv(3, 3, fundmat_out.data());
 
   int nFound, nInliers;
-  getEgoMotionFromImages(im1_cv, im2_cv, K_cv, Kinv_cv, R_out_cv, T_out_cv,
+  getEgoMotionFromImages(im1_cv, im2_cv, K_cv, Kinv_cv, R_out_cv, T_out_cv, fundmat_cv,
 			 &nFound, &nInliers, maxPoints_p, pointsQuality_p,
 			 pointsMinDistance_p, featuresBlockSize_p, trackerWinSize_p,
 			 trackerMaxLevel_p, ransacMaxDist_p);
@@ -214,6 +218,32 @@ static int ChessboardCalibrate(lua_State* L) {
   K_float = CalibrateFromPoints(points3d, points2d, h, w, &distP_float);
   copyMat<float, THreal>(K_float, K_cv);
   copyMat<float, THreal>(distP_float, distP_cv);
+  
+  return 0;
+}
+
+template<typename THreal>
+static int GetEpipoles(lua_State* L) {
+  setLuaState(L);
+  THTensor<THreal> fundmat = FromLuaStack<THTensor<THreal> >(L, 1);
+  THTensor<THreal> e1      = FromLuaStack<THTensor<THreal> >(L, 2);
+  THTensor<THreal> e2      = FromLuaStack<THTensor<THreal> >(L, 3);
+
+  THcheckSize(fundmat, 3, 3);
+  THcheckSize(e1, 2);
+  THcheckSize(e2, 2);
+
+  Mat fundmat_cv = THTensorToMat<THreal>(fundmat);
+
+  matf fundmat_float(3, 3);
+  matf e1_float(3, 1), e2_float(3, 1);
+  copyMat<THreal, float>(fundmat_cv, fundmat_float);
+
+  GetEpipolesFromFundMat(fundmat_float, e1_float, e2_float);
+  e1(0) = e1_float(0,0)/e1_float(2,0);
+  e1(1) = e1_float(1,0)/e1_float(2,0);
+  e2(0) = e2_float(0,0)/e2_float(2,0);
+  e2(1) = e2_float(1,0)/e2_float(2,0);
   
   return 0;
 }

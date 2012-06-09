@@ -55,7 +55,7 @@ template<typename T> void THcheckSizeFunction(const THTensor<T> & t,
     if (t.size(i) != s[i])
       THassertFormat("THcheckSize: ", file, line);
 }
-#define THcheckSize(t,s1,...) (THcheckSizeFunction((t),__FILE__,__LINE__,(s1),__VA_ARGS__))
+#define THcheckSize(t,...) (THcheckSizeFunction((t),__FILE__,__LINE__,__VA_ARGS__))
 
 #include "LuaTemplate.hpp"
 

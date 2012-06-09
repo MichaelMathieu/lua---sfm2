@@ -26,6 +26,7 @@ static const luaL_reg libsfm2_(Main__) [] =
   {"removeEgoMotion", RemoveEgoMotion<real>},
   {"undistortImage", UndistortImage<real>},
   {"chessboardCalibrate", ChessboardCalibrate<real>},
+  {"getEpipoles", GetEpipoles<real>},
   {NULL, NULL}  /* sentinel */
 };
 

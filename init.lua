@@ -58,11 +58,12 @@ function sfm2.getEgoMotion(...)
    )
    local R = torch.FloatTensor(3,3)
    local T = torch.FloatTensor(3)
+   local fundmat = torch.FloatTensor(3,3)
    local nFound, nInliers = self.im1.libsfm2.getEgoMotion(
-      self.im1, self.im2, self.K, R, T, self.maxPoints, self.pointsQuality,
+      self.im1, self.im2, self.K, R, T, fundmat, self.maxPoints, self.pointsQuality,
       self.pointsMinDistance, self.featuresBlockSize, self.trackerWinSize,
       self.trackerMaxLevel, self.ransacMaxDist)
-   return R, T, nFound, nInliers
+   return R, T, nFound, nInliers, fundmat
 end
 
 function sfm2.removeEgoMotion(im, K, R)
@@ -98,6 +99,13 @@ function sfm2.undistortImage(im, K, distortParameters)
    end
    im.libsfm2.undistortImage(imt, K_, dist_, ret)
    return sfm2.CV2TH(ret)
+end
+
+function sfm2.getEpipoles(fundmat)
+   local e1 = torch.Tensor(2)
+   local e2 = torch.Tensor(2)
+   fundmat.libsfm2.getEpipoles(fundmat, e1, e2)
+   return e1, e2
 end
 
 function sfm2.testme()
