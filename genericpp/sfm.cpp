@@ -122,6 +122,7 @@ static int RemoveEgoMotion(lua_State *L) {
   THTensor<float > Rraw   = FromLuaStack<THTensor<float > >(L, 3);
   THTensor<THreal> output = FromLuaStack<THTensor<THreal> >(L, 4);
   THTensor<THreal> mask   = FromLuaStack<THTensor<THreal> >(L, 5);
+  bool           bilinear = FromLuaStack<bool             >(L, 6);
 
   THcheckSize(K, 3, 3);
   THassert((Rraw.size(0) == 3) && (Rraw.size(1) == 3));
@@ -144,21 +145,57 @@ static int RemoveEgoMotion(lua_State *L) {
   const long* os = output.stride();
   const long* ms = mask.stride();
   
-  int i, j, k, x, y;
+  int i, j, k;
   float xf, yf, wf;
-  for (i = 0; i < h; ++i)
-    for (j = 0; j < w; ++j) {
-      xf = R_p[0] * j + R_p[1] * i + R_p[2];
-      yf = R_p[3] * j + R_p[4] * i + R_p[5];
-      wf = R_p[6] * j + R_p[7] * i + R_p[8];
-      x = round(xf/wf);
-      y = round(yf/wf);
-      if ((x >= 0) && (y >= 0) && (x < w) && (y < h)) {
-	for (k = 0; k < nchannels; ++k)
-	  output_p[k*os[0] + i*os[1] + j*os[2] ] = input_p[k*is[0] + y*is[1] + x*is[2] ];
-	mask_p[i*ms[0] + j*ms[1]] = 1.0;
+  if (bilinear) {
+    int ix_nw, iy_nw, ix_ne, iy_ne, ix_sw, iy_sw, ix_se, iy_se;
+    float nw, ne, sw, se;
+    for (i = 0; i < h; ++i)
+      for (j = 0; j < w; ++j) {
+	wf = 1.0f / (R_p[6] * j + R_p[7] * i + R_p[8]);
+	xf = wf   * (R_p[0] * j + R_p[1] * i + R_p[2]);
+	yf = wf   * (R_p[3] * j + R_p[4] * i + R_p[5]);
+	if ((xf >= 0) && (yf >= 0) && (xf < w-1) && (yf < h-1)) {
+	  ix_nw = floor(xf);
+	  iy_nw = floor(yf);
+	  ix_ne = ix_nw + 1;
+	  iy_ne = iy_nw;
+	  ix_sw = ix_nw;
+	  iy_sw = iy_nw + 1;
+	  ix_se = ix_nw + 1;
+	  iy_se = iy_nw + 1;
+	  
+	  nw = (ix_se-xf)*(iy_se-yf);
+	  ne = (xf-ix_sw)*(iy_sw-yf);
+	  sw = (ix_ne-xf)*(yf-iy_ne);
+	  se = (xf-ix_nw)*(yf-iy_nw);
+	  
+	  for (k = 0; k < nchannels; ++k)
+	    output_p[k*os[0] + i*os[1] + j*os[2]] =
+	        input_p[k*os[0] + iy_nw*is[1] + ix_nw*is[2]] * nw
+	      + input_p[k*os[0] + iy_ne*is[1] + ix_ne*is[2]] * ne
+	      + input_p[k*os[0] + iy_sw*is[1] + ix_sw*is[2]] * sw
+	      + input_p[k*os[0] + iy_se*is[1] + ix_se*is[2]] * se;
+	  mask_p[i*ms[0] + j*ms[1]] = 1.0;
+		
+	}
       }
-    }
+  } else {
+    int x, y;
+    for (i = 0; i < h; ++i)
+      for (j = 0; j < w; ++j) {
+	xf = R_p[0] * j + R_p[1] * i + R_p[2];
+	yf = R_p[3] * j + R_p[4] * i + R_p[5];
+	wf = R_p[6] * j + R_p[7] * i + R_p[8];
+	x = round(xf/wf);
+	y = round(yf/wf);
+	if ((x >= 0) && (y >= 0) && (x < w) && (y < h)) {
+	  for (k = 0; k < nchannels; ++k)
+	    output_p[k*os[0] + i*os[1] + j*os[2]] = input_p[k*is[0] + y*is[1] + x*is[2]];
+	  mask_p[i*ms[0] + j*ms[1]] = 1.0;
+	}
+      }
+  }
   
   return 0;
 }

@@ -13,11 +13,13 @@ sfm2 = {}
 require 'libsfm2'
 
 function sfm2.TH2CV(im)
-   return im:reshape(im:size(1),im:size(2)*im:size(3)):transpose(1,2):reshape(im:size(2), im:size(3), im:size(1))
+   return im:reshape(im:size(1),im:size(2)*im:size(3))
+            :transpose(1,2):reshape(im:size(2), im:size(3), im:size(1))
 end
 
 function sfm2.CV2TH(im)
-   return im:reshape(im:size(1)*im:size(2),im:size(3)):transpose(1,2):reshape(im:size(3), im:size(1), im:size(2))
+   return im:reshape(im:size(1)*im:size(2),im:size(3))
+            :transpose(1,2):reshape(im:size(3), im:size(1), im:size(2))
 end
 
 function sfm2.getK(focal, imH, imW)
@@ -66,10 +68,19 @@ function sfm2.getEgoMotion(...)
    return R, T, nFound, nInliers, fundmat
 end
 
-function sfm2.removeEgoMotion(im, K, R)
+function sfm2.removeEgoMotion(im, K, R, mode)
    local ret = torch.Tensor(im:size()):zero()
    local mask = torch.Tensor(im:size(2), im:size(3)):zero()
-   im.libsfm2.removeEgoMotion(im, K, R, ret, mask)
+   mode = mode or 'simple'
+   local bilinear
+   if mode == 'bilinear' then
+      bilinear = true
+   elseif mode == 'simple' then
+      bilinear = false
+   else
+      error('Unknown mode ' .. mode .. ' (use : simple | bilinear)')
+   end
+   im.libsfm2.removeEgoMotion(im, K, R, ret, mask, bilinear)
    return ret, mask
 end
 
