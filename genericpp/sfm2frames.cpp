@@ -92,11 +92,13 @@ void NormalizePoints2(const vector<TrackedPoint> & points2d,
 void GetEpipolesFromFundMat(const matf & fundmat, matf & e1, matf & e2) {
   SVD svd(fundmat);
   //e1 = matf(3,1);
-  e1.resize(3, 1);
+  if ((e1.size().height != 3) or (e1.size().width != 3))
+      e1 = matf(3, 1);
   copyCol(svd.vt.t(), e1, 2, 0);
   svd(fundmat.t());
   //e2 = matf(3,1);
-  e2.resize(3, 1);
+  if ((e2.size().height != 3) or (e2.size().width != 3))
+      e2 = matf(3, 1);
   copyCol(svd.vt.t(), e2, 2, 0);
 }
 

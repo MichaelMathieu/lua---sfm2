@@ -16,9 +16,9 @@ mat3b THTensorToMat3b(const THTensor<Treal> & im) {
     mat3b ret(h, w);
     for (int i = 0; i < h; ++i)
       for (int j = 0; j < w; ++j)
-	ret(i,j)=Vec3b(min<Treal>(255., max<Treal>(0.0, im_p[is[0]*2+is[1]*i+is[2]*j]*255)),
-		       min<Treal>(255., max<Treal>(0.0, im_p[is[0]  +is[1]*i+is[2]*j]*255)),
-		       min<Treal>(255., max<Treal>(0.0, im_p[        is[1]*i+is[2]*j]*255)));
+	ret(i,j)=Vec3b(min<Treal>(255., max<Treal>(0.0, im_p[is[0]*2+is[1]*i+is[2]*j]*255.)),
+		       min<Treal>(255., max<Treal>(0.0, im_p[is[0]  +is[1]*i+is[2]*j]*255.)),
+		       min<Treal>(255., max<Treal>(0.0, im_p[is[0]*0+is[1]*i+is[2]*j]*255.)));
     return ret;
   } else if (im.size(2) == 3) {
     long h = im.size(0);
@@ -28,9 +28,9 @@ mat3b THTensorToMat3b(const THTensor<Treal> & im) {
     mat3b ret(h, w);
     for (int i = 0; i < h; ++i)
       for (int j = 0; j < w; ++j)
-	ret(i,j)=Vec3b(min<Treal>(255., max<Treal>(0.0, im_p[is[0]*i+is[1]*j+is[2]*2]*255)),
-		       min<Treal>(255., max<Treal>(0.0, im_p[is[0]*i+is[1]*j+is[2]  ]*255)),
-		       min<Treal>(255., max<Treal>(0.0, im_p[is[0]*i+is[1]*j        ]*255)));
+	ret(i,j)=Vec3b(min<Treal>(255., max<Treal>(0.0, im_p[is[0]*i+is[1]*j+is[2]*2]*255.)),
+		       min<Treal>(255., max<Treal>(0.0, im_p[is[0]*i+is[1]*j+is[2]  ]*255.)),
+		       min<Treal>(255., max<Treal>(0.0, im_p[is[0]*i+is[1]*j+is[2]*0]*255.)));
     return ret;
   } else {
     THerror("THTensorToMat3b: tensor must be 3xHxW or HxWx3");
@@ -78,13 +78,14 @@ static int GetEgoMotion(lua_State *L) {
   THTensor<float > R_out        = FromLuaStack<THTensor<float > >(L, 4);
   THTensor<float > T_out        = FromLuaStack<THTensor<float > >(L, 5);
   THTensor<float > fundmat_out  = FromLuaStack<THTensor<float > >(L, 6);
-  int   maxPoints_p             = FromLuaStack<int>  (L, 7);
-  float pointsQuality_p         = FromLuaStack<float>(L, 8);
-  float pointsMinDistance_p     = FromLuaStack<float>(L, 9);
-  int   featuresBlockSize_p     = FromLuaStack<int>  (L, 10);
-  int   trackerWinSize_p        = FromLuaStack<int>  (L, 11);
-  int   trackerMaxLevel_p       = FromLuaStack<int>  (L, 12);
-  float ransacMaxDist_p         = FromLuaStack<float>(L, 13);
+  THTensor<float > inliers_out  = FromLuaStack<THTensor<float > >(L, 7);
+  int   maxPoints_p             = FromLuaStack<int>  (L, 8);
+  float pointsQuality_p         = FromLuaStack<float>(L, 9);
+  float pointsMinDistance_p     = FromLuaStack<float>(L, 10);
+  int   featuresBlockSize_p     = FromLuaStack<int>  (L, 11);
+  int   trackerWinSize_p        = FromLuaStack<int>  (L, 12);
+  int   trackerMaxLevel_p       = FromLuaStack<int>  (L, 13);
+  float ransacMaxDist_p         = FromLuaStack<float>(L, 14);
 
   THassert((K.size(0) == 3) && (K.size(1) == 3) &&
 	   (R_out.size(0) == 3) && (R_out.size(1) == 3) &&
@@ -103,14 +104,22 @@ static int GetEgoMotion(lua_State *L) {
   matf T_out_cv(3, 1, T_out.data());
   matf fundmat_cv(3, 3, fundmat_out.data());
 
-  int nFound, nInliers;
+  vector<TrackedPoint> found, inliers;
   getEgoMotionFromImages(im1_cv, im2_cv, K_cv, Kinv_cv, R_out_cv, T_out_cv, fundmat_cv,
-			 &nFound, &nInliers, maxPoints_p, pointsQuality_p,
+			 found, inliers, maxPoints_p, pointsQuality_p,
 			 pointsMinDistance_p, featuresBlockSize_p, trackerWinSize_p,
 			 trackerMaxLevel_p, ransacMaxDist_p);
 
-  PushOnLuaStack<int>(L, nFound);
-  PushOnLuaStack<int>(L, nInliers);
+  if (inliers_out.size() != 0)
+    for (size_t i = 0; i < inliers.size(); ++i) {
+      inliers_out(i, 0) = inliers[i].x1;
+      inliers_out(i, 1) = inliers[i].y1;
+      inliers_out(i, 2) = inliers[i].x2;
+      inliers_out(i, 3) = inliers[i].y2;
+    }
+
+  PushOnLuaStack<int>(L, found.size());
+  PushOnLuaStack<int>(L, inliers.size());
   return 2;
 }
 
@@ -277,6 +286,7 @@ static int GetEpipoles(lua_State* L) {
   copyMat<THreal, float>(fundmat_cv, fundmat_float);
 
   GetEpipolesFromFundMat(fundmat_float, e1_float, e2_float);
+  //printf("%f %f\n", e2_float(2, 0), e1_float(2, 0));
   e1(0) = e1_float(0,0)/e1_float(2,0);
   e1(1) = e1_float(1,0)/e1_float(2,0);
   e2(0) = e2_float(0,0)/e2_float(2,0);

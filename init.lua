@@ -50,22 +50,32 @@ function sfm2.getEgoMotion(...)
       {arg='pointsMinDistance', type='number',
        help='Minumum distance between two tracked points', default=3.0},
       {arg='featuresBlockSize', type='number',
-       help='opencv GoodFeaturesToTrack block size', default=10},
+       help='opencv GoodFeaturesToTrack block size', default=20},
       {arg='trackerWinSize', type='number',
-       help='opencv calcOpticalFlowPyrLK block size', default=5},
+       help='opencv calcOpticalFlowPyrLK block size', default=10},
       {arg='trackerMaxLevel', type='number',
        help='opencv GoodFeaturesToTrack pyramid depth', default=5},
-      {arg='ransacMaxDist', type='number', default = 1.,
-       help='Maximum distance from the epipolar line to consider a point valid in RANSAC'}
+      {arg='ransacMaxDist', type='number', default = 0.2,
+       help='Maximum distance from the epipolar line to consider a point valid in RANSAC'},
+      {arg='getInliers', type='bool', default = false,
+       help = 'Returns the RANSAC inliers'}
    )
    local R = torch.FloatTensor(3,3)
    local T = torch.FloatTensor(3)
    local fundmat = torch.FloatTensor(3,3)
+   local inliers = torch.Tensor()
+   if self.getInliers then
+      inliers:resize(self.maxPoints, 4)
+   end
    local nFound, nInliers = self.im1.libsfm2.getEgoMotion(
-      self.im1, self.im2, self.K, R, T, fundmat, self.maxPoints, self.pointsQuality,
+      self.im1, self.im2, self.K, R, T, fundmat, inliers, self.maxPoints, self.pointsQuality,
       self.pointsMinDistance, self.featuresBlockSize, self.trackerWinSize,
       self.trackerMaxLevel, self.ransacMaxDist)
-   return R, T, nFound, nInliers, fundmat
+   if self.getInliers then
+      return R, T, nFound, nInliers, fundmat, inliers:resize(nInliers, 4)
+   else
+      return R, T, nFound, nInliers, fundmat
+   end
 end
 
 function sfm2.removeEgoMotion(im, K, R, mode)
