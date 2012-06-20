@@ -8,7 +8,7 @@ struct TrackedPoint {
   //w1, w2 should stay to 1
   float x1, y1, w1; //image 1
   float x2, y2, w2; //image 2
-  TrackedPoint(float x1, float y1, float x2, float y2)
+  TrackedPoint(float x1=0, float y1=0, float x2=0, float y2=0)
     :x1(x1), y1(y1), w1(1.0f), x2(x2), y2(y2), w2(1.0f) {};
   inline float getX(int i) const {//ugly hack
     return *((&x1)+3*i);

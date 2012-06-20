@@ -69,7 +69,35 @@ static int InverseMatrix(lua_State *L) {
   return 0;
 }
 
-//GetEgoMotion(image1(double), image2(double), K(float), Kinv(float), R_out(float),T_out(float))
+template<typename THreal>
+static int GetIsometricEgoMotion(lua_State* L) {
+  setLuaState(L);
+  THTensor<THreal> image1       = FromLuaStack<THTensor<THreal> >(L, 1);
+  THTensor<THreal> image2       = FromLuaStack<THTensor<THreal> >(L, 2);
+  THTensor<THreal> M_out        = FromLuaStack<THTensor<THreal> >(L, 3);
+  int   maxPoints_p             = FromLuaStack<int>  (L, 4);
+  float pointsQuality_p         = FromLuaStack<float>(L, 5);
+  float pointsMinDistance_p     = FromLuaStack<float>(L, 6);
+  int   featuresBlockSize_p     = FromLuaStack<int>  (L, 7);
+  int   trackerWinSize_p        = FromLuaStack<int>  (L, 8);
+  int   trackerMaxLevel_p       = FromLuaStack<int>  (L, 9);
+  float ransacMaxDist_p         = FromLuaStack<float>(L, 10);
+
+  mat3b im1_cv = THTensorToMat3b(image1);
+  mat3b im2_cv = THTensorToMat3b(image2);
+  vector<TrackedPoint> trackedPoints;
+  vector<TrackedPoint> found, inliers;
+  matf M_cv(4, 1);
+  getIsometricEgoMotionFromImages(im1_cv, im2_cv, M_cv,
+				  found, inliers, maxPoints_p, pointsQuality_p,
+				  pointsMinDistance_p, featuresBlockSize_p, trackerWinSize_p,
+				  trackerMaxLevel_p, ransacMaxDist_p);
+  Mat M_out_cv = THTensorToMat<THreal>(M_out);
+  copyMat<float, THreal>(M_cv, M_out_cv);
+  
+  return 0;
+}
+
 template<typename THreal>
 static int GetEgoMotion(lua_State *L) {
   setLuaState(L);
