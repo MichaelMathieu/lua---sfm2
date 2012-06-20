@@ -27,6 +27,7 @@ static const luaL_reg libsfm2_(Main__) [] =
   {"undistortImage", UndistortImage<real>},
   {"chessboardCalibrate", ChessboardCalibrate<real>},
   {"getEpipoles", GetEpipoles<real>},
+  {"getEpipoleFromMatches", GetEpipoleFromMatches<real>},
   {NULL, NULL}  /* sentinel */
 };
 
