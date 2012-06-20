@@ -354,7 +354,7 @@ matf GetExtrinsicsFromEssential(const matf & essMat_, const TrackedPoint & one_p
     //cout << "case 4" << endl;
     return extr;
   }
-  assert(false); //this should not happen. If it does, sth is wrong
+  //assert(false); //this should not happen. If it does, sth is wrong
   // (the point might be the on the principal plane, or there is a bug)
   return matf(0,0); // remove warning
 }

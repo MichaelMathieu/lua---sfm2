@@ -5,6 +5,7 @@
 #include "genericpp/egoMotion.hpp"
 #include "genericpp/calibration.hpp"
 #include "genericpp/sfm2frames.hpp"
+#include "genericpp/epipoles.hpp"
 
 template<typename Treal>
 mat3b THTensorToMat3b(const THTensor<Treal> & im) {
@@ -292,5 +293,43 @@ static int GetEpipoles(lua_State* L) {
   e2(0) = e2_float(0,0)/e2_float(2,0);
   e2(1) = e2_float(1,0)/e2_float(2,0);
   
+  return 0;
+}
+
+template<typename THreal>
+static int GetEpipoleFromMatches(lua_State* L) {
+  setLuaState(L);
+  THTensor<THreal> matches = FromLuaStack<THTensor<THreal> >(L, 1);
+  THTensor<THreal> R       = FromLuaStack<THTensor<THreal> >(L, 2);
+  THTensor<THreal> K       = FromLuaStack<THTensor<THreal> >(L, 3);
+  THTensor<THreal> e       = FromLuaStack<THTensor<THreal> >(L, 4);
+  float d                  = FromLuaStack<float>(L, 5);
+
+  THassert(matches.size(1) == 4);
+  THcheckSize(R, 3, 3);
+  THcheckSize(K, 3, 3);
+  THcheckSize(e, 2);
+  int n = matches.size(0);
+  THassert(n >= 2);
+
+  matf K_cv = THTensorToMat<THreal>(K);
+  matf R_cv = K_cv * THTensorToMat<THreal>(R).inv() * K_cv.inv();
+  matf lines_cv(n, 3);
+
+  matf v(3, 1);
+  for (int i = 0; i < n; ++i) {
+    v(0, 0) = matches(i, 0);
+    v(1, 0) = matches(i, 1);
+    v(2, 0) = 1.0f;
+    v = R_cv * v;
+    lines_cv(i, 0) = v(1, 0)                 - v(2, 0) * matches(i, 3);
+    lines_cv(i, 1) = v(2, 0) * matches(i, 2) - v(0, 0);
+    lines_cv(i, 2) = v(0, 0) * matches(i, 3) - v(1, 0) * matches(i, 2);
+  }
+  
+  matf e_cv = GetEpipoleFromLinesRansac(lines_cv, d);
+  e(0) = e_cv(0,0)/e_cv(2,0);
+  e(1) = e_cv(1,0)/e_cv(2,0);
+
   return 0;
 }

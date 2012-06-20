@@ -129,6 +129,13 @@ function sfm2.getEpipoles(fundmat)
    return e1, e2
 end
 
+function sfm2.getEpipoleFromMatches(matches, R, K, d)
+   local e = torch.Tensor(2)
+   d = d or 50
+   matches.libsfm2.getEpipoleFromMatches(matches, R, K, e, d)
+   return e
+end
+
 function sfm2.testme()
    print("SFM: testme...")
 end
