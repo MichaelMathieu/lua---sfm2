@@ -94,8 +94,10 @@ static int GetIsometricEgoMotion(lua_State* L) {
 				  trackerMaxLevel_p, ransacMaxDist_p);
   Mat M_out_cv = THTensorToMat<THreal>(M_out);
   copyMat<float, THreal>(M_cv, M_out_cv);
-  
-  return 0;
+
+  PushOnLuaStack<int>(L, found.size());
+  PushOnLuaStack<int>(L, inliers.size());
+  return 2;
 }
 
 template<typename THreal>
