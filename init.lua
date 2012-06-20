@@ -64,7 +64,6 @@ function sfm2.getIsometricEgoMotion(...)
       self.pointsMinDistance, self.featuresBlockSize, self.trackerWinSize,
       self.trackerMaxLevel, self.ransacMaxDist)
    local R = torch.FloatTensor(3,3):zero()
-   --M = M / math.sqrt(M[1]*M[1]+M[2]*M[2])
    R[1][1] = M[1]
    R[2][2] = M[1]
    R[1][2] = -M[2]
@@ -77,8 +76,8 @@ end
 
 function sfm2.getIsometricEgoMotion_testme()
    local im1 = image.lena()
-   local im2 = image.load('lena2.png')--torch.Tensor(im1:size())
-   --im2:sub(1,3,1,im2:size(2), 51, im2:size(3)):copy(image.rotate(im1, -0.1):sub(1,3,1,im2:size(2), 1, im2:size(3)-50))
+   local im2 = torch.Tensor(im1:size())
+   im2:sub(1,3,1,im2:size(2), 51, im2:size(3)):copy(image.rotate(im1, -0.1):sub(1,3,1,im2:size(2), 1, im2:size(3)-50))
    --image.display{im1, im2}
    local R, nFound, nInliers = sfm2.getIsometricEgoMotion{im1=im1, im2=im2, ransacMaxDist=10}
    print(R)
