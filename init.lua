@@ -58,7 +58,6 @@ function sfm2.getIsometricEgoMotion(...)
        help='Maximum distance from the epipolar line to consider a point valid in RANSAC'}
    )
    local M = torch.Tensor(4);
-   print(M)
    local nFound, nInliers = self.im1.libsfm2.getIsometricEgoMotion(
       self.im1, self.im2, M, self.maxPoints, self.pointsQuality,
       self.pointsMinDistance, self.featuresBlockSize, self.trackerWinSize,
