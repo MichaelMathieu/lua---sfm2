@@ -37,6 +37,10 @@ void GetTrackedPoints(const mat3b & im1, const mat3b & im2, vector<TrackedPoint>
 		      float minDistance = 3.0f, int blockSize = 10, int winSize = 10,
 		      int maxLevel = 5, int criteriaN = 100, float criteriaEps = 1.0f);
 
+void NormalizePoints2(const vector<TrackedPoint> & points2d,
+		      vector<TrackedPoint> & points2d_out,
+		      vector<matf> & H_out);
+
 void GetEpipolesFromFundMat(const matf & fundmat, matf & e1, matf & e2);
 
 void GetCameraMatricesFromFundMat(const matf & fundmat, matf & P1, matf & P2);

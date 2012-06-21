@@ -40,7 +40,6 @@ void GetTrackedPoints(const mat3b & im1, const mat3b & im2, vector<TrackedPoint>
 #endif
 }
 
-#if 0 //Not used for now.
 //HZ p394 Algo 16.1
 //the H's are homographies to "denormalize" (unlike HZ)
 void NormalizePoints2(const vector<TrackedPoint> & points2d,
@@ -69,7 +68,7 @@ void NormalizePoints2(const vector<TrackedPoint> & points2d,
       y = points2d_out[i].getY(iView);
       meandist[iView] += sqrt(x*x + y*y);
     }
-    meandist[iView] = meandist[iView] / ((float)n * SQRT2);
+    meandist[iView] = meandist[iView] / ((float)n) * SQRT2;
     //meandist[iView] = 1.0f;
   }
   for (int i = 0; i < n; ++i) {
@@ -87,7 +86,6 @@ void NormalizePoints2(const vector<TrackedPoint> & points2d,
     H_out.back()(2,2) = 1.0f;
   }
 }
-#endif
 
 void GetEpipolesFromFundMat(const matf & fundmat, matf & e1, matf & e2) {
   SVD svd(fundmat);
