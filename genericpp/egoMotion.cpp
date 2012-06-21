@@ -188,12 +188,6 @@ void getPerspectiveEgoMotionFromImages(const mat3b & im1, const mat3b & im2,
   matf H1 = H_denormalize[0];
   matf H2 = H_denormalize[1];
   size_t n_pts = trackedPoints.size();
-  for (int i = 0; i < n_pts; ++i) {
-    matf p = trackedPoints[i].getP(1);
-    p = H2.inv() * p;
-    p = p/p(2,0);
-    cout << p-trackedPointsN[i].getP(1) << endl;
-  }
   matf Minv;
   size_t i_trial, n_trials = 100, i_pt;
   float dist_pt, total_dist, best_dist = 0, logp = log(0.01f);
@@ -202,7 +196,6 @@ void getPerspectiveEgoMotionFromImages(const mat3b & im1, const mat3b & im2,
   size_t n_goods;
   vector<size_t> sample((size_t)4);
   for (i_trial = 0; i_trial < n_trials; ++i_trial) {
-    //cout << i_trial << endl;
     vector<int> & goods = goods_v[i_goods];
     goods.clear();
     total_dist = 0;
@@ -217,7 +210,6 @@ void getPerspectiveEgoMotionFromImages(const mat3b & im1, const mat3b & im2,
       }
     }
     n_goods = goods.size();
-    cout << n_goods << endl;
     n_trials = round(logp / log(1.0f - pow(((float)n_goods)/n_pts, 4)));
     if ((n_goods > goods_v[1-i_goods].size()) ||
         ((n_goods == goods_v[1-i_goods].size()) && (total_dist < best_dist))) {
@@ -234,5 +226,4 @@ void getPerspectiveEgoMotionFromImages(const mat3b & im1, const mat3b & im2,
   }
   perspectiveEgoMotionSVD(sample, trackedPointsN, M);
   M = H2 * M * H1.inv();
-  cout << H1 << endl << H2 << endl;
 }
