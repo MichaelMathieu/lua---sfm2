@@ -9,10 +9,12 @@ void getEgoMotionFromImages(const mat3b & im1, const mat3b & im2,
 			    int maxPoints, float pointsQuality, float pointsMinDistance,
 			    int featuresBlockSize, int trackerWinSize, int trackerMaxLevel,
 			    float ransacMaxDist) {
-  trackedPoints.clear();
   inliers.clear();
-  GetTrackedPoints(im1, im2, trackedPoints, maxPoints, pointsQuality, pointsMinDistance,
-		   featuresBlockSize, trackerWinSize, trackerMaxLevel, 100, 1.0f);
+  if (trackedPoints.size() == 0) {
+    //cout << "new pts" << endl;
+    GetTrackedPoints(im1, im2, trackedPoints, maxPoints, pointsQuality, pointsMinDistance,
+		     featuresBlockSize, trackerWinSize, trackerMaxLevel, 100, 1.0f);
+  }
   fundMat = GetFundamentalMat(trackedPoints, &inliers, ransacMaxDist, 0.99);
   matf essMat = K.t() * fundMat * K;
   
@@ -171,6 +173,37 @@ void perspectiveEgoMotionSVD(const vector<size_t> & sample,
   M(2,2) = svd.vt.at<float>(8, 8);
 }
 
+void perspectiveEgoMotionSVDFast(const vector<size_t> & sample,
+				 const vector<TrackedPoint> & points, matf & M) {
+  matf A(max((size_t)(2*sample.size()),(size_t) 9), 9, 0.0f);
+  for (size_t i = 0; i < sample.size(); ++i) {
+    const TrackedPoint & p = points[sample[i]];
+    A(2*i  , 3) =   p.x1;
+    A(2*i  , 4) =   p.y1;
+    A(2*i  , 5) =   1.0f;
+    A(2*i  , 6) = - p.x1 * p.y2;
+    A(2*i  , 7) = - p.y1 * p.y2;
+    A(2*i  , 8) = -        p.y2;
+    
+    A(2*i+1, 0) = - p.x1;
+    A(2*i+1, 1) = - p.y1;
+    A(2*i+1, 2) = - 1.0f;
+    A(2*i+1, 6) =   p.x1 * p.x2;
+    A(2*i+1, 7) =   p.y1 * p.x2;
+    A(2*i+1, 8) =          p.x2;
+  }
+  SVD svd(A);
+  M(0,0) = svd.vt.at<float>(8, 0);
+  M(0,1) = svd.vt.at<float>(8, 1);
+  M(0,2) = svd.vt.at<float>(8, 2);
+  M(1,0) = svd.vt.at<float>(8, 3);
+  M(1,1) = svd.vt.at<float>(8, 4);
+  M(1,2) = svd.vt.at<float>(8, 5);
+  M(2,0) = svd.vt.at<float>(8, 6);
+  M(2,1) = svd.vt.at<float>(8, 7);
+  M(2,2) = svd.vt.at<float>(8, 8);
+}
+
 void getPerspectiveEgoMotionFromImages(const mat3b & im1, const mat3b & im2,
 				       matf & M, vector<TrackedPoint> &trackedPoints,
 				       vector<TrackedPoint> & inliers,
@@ -200,7 +233,7 @@ void getPerspectiveEgoMotionFromImages(const mat3b & im1, const mat3b & im2,
     goods.clear();
     total_dist = 0;
     GetRandomSample(sample, 0, n_pts);
-    perspectiveEgoMotionSVD(sample, trackedPointsN, M);
+    perspectiveEgoMotionSVDFast(sample, trackedPointsN, M);
     Minv = M.inv();
     for (i_pt = 0; i_pt < n_pts; ++i_pt) {
       dist_pt = perspectiveDistToPoint(M, Minv, trackedPointsN[i_pt]);
@@ -213,9 +246,9 @@ void getPerspectiveEgoMotionFromImages(const mat3b & im1, const mat3b & im2,
     n_trials = round(logp / log(1.0f - pow(((float)n_goods)/n_pts, 4)));
     if ((n_goods > goods_v[1-i_goods].size()) ||
         ((n_goods == goods_v[1-i_goods].size()) && (total_dist < best_dist))) {
-	  i_goods = 1-i_goods;
-	  best_dist = total_dist;
-	}
+      i_goods = 1-i_goods;
+      best_dist = total_dist;
+    }
   }
   vector<int> & goods = goods_v[1-i_goods];
   inliers.resize(goods.size());
@@ -226,4 +259,88 @@ void getPerspectiveEgoMotionFromImages(const mat3b & im1, const mat3b & im2,
   }
   perspectiveEgoMotionSVD(sample, trackedPointsN, M);
   M = H2 * M * H1.inv();
+}
+
+inline void lineFromTrackedPoint(const TrackedPoint & p, const matf & H, matf l) {
+  cout << "H:\n"  << H         << endl;
+  cout << "p1:\n" << p.getP(0) << endl;
+  cout << "p2:\n" << p.getP(1) << endl;
+  cout << "H*p1:\n" << (matf)(H*p.getP(0)) << endl;
+  cout << "H*p1 x p2:\n" << (matf)((H*p.getP(0)).cross(p.getP(1))) << endl;
+  l = (H * p.getP(0)).cross(p.getP(1)).t();
+  cout << "l:\n" << l << endl;
+}
+
+matf epipoleFromEgoMotion(const vector<size_t> & sample,
+			  const vector<TrackedPoint> & points, const matf & H) {
+  size_t n = sample.size();
+  matf A(n, 3);
+  for (size_t i = 0; i < n; ++i)
+    lineFromTrackedPoint(points[sample[i]], H, A.row(i));
+  SVD svd(A);
+  return (matf)(svd.vt.row(2).t()/svd.vt.at<float>(2,2));
+}
+
+float perspectiveEpipolarDistance(const matf & H, const matf & e, const TrackedPoint & p) {
+  matf l;
+  lineFromTrackedPoint(p, H, l);
+  float a = l(0,0), b = l(1,0), c = l(2,0);
+  return abs(a*e(0,0) + b*e(1,0) + c) / sqrt(a*a+b*b);
+}
+
+void getPerspectiveEpipolarEgoMotionFromImages(const mat3b & im1, const mat3b & im2,
+					       matf & M, vector<TrackedPoint> &points,
+					       vector<TrackedPoint>* inliers,
+					       int maxPoints, float pointsQuality,
+					       float pointsMinDistance, int featuresBlockSize,
+					       int trackerWinSize, int trackerMaxLevel,
+					       float ransacMaxDist) {
+  points.clear();
+  GetTrackedPoints(im1, im2, points, maxPoints, pointsQuality, pointsMinDistance,
+		   featuresBlockSize, trackerWinSize, trackerMaxLevel, 100, 1.0f);
+  size_t n_pts = points.size();
+
+  vector<TrackedPoint> pointsN;
+  vector<matf> H;
+  NormalizePoints2(points, pointsN, H);
+  
+  size_t i_trial, n_trials = 100000, i_pt, n_goods, i_goods = 0;
+  float dist_pt, total_dist, best_dist = 0, logp = log(0.01f);
+  vector<size_t> goods_v[2], sample(size_t(4));
+  matf e;
+  for (i_trial = 0; i_trial < n_trials; ++i_trial) {
+    vector<size_t> & goods = goods_v[i_goods];
+    goods.clear();
+    total_dist = 0;
+    GetRandomSample(sample, 0, n_pts);
+    perspectiveEgoMotionSVD(sample, pointsN, M);
+    cout << "M:\n" << M << endl;
+    e = epipoleFromEgoMotion(sample, pointsN, M);
+    cout << "e:\n" << e << endl;
+    for (i_pt = 0; i_pt < n_pts; ++i_pt) {
+      dist_pt = perspectiveEpipolarDistance(M, e, pointsN[i_pt]);
+      cout << "dist: " << dist_pt << endl;
+      if (dist_pt < ransacMaxDist) {
+	total_dist += dist_pt;
+	goods.push_back(i_pt);
+      }
+    }
+    n_goods = goods.size();
+    n_trials = round(logp / log(1.0f - pow(((float)n_goods)/n_pts, 8)));
+    if ((n_goods > goods_v[1-i_goods].size()) ||
+	((n_goods == goods_v[1-i_goods].size()) && (total_dist < best_dist))) {
+      cout << n_goods << " " << dist_pt << endl;
+      i_goods = 1-i_goods;
+      best_dist = total_dist;
+    }
+  }
+  vector<size_t> goods = goods_v[1-i_goods];
+  if (inliers) {
+    inliers->resize(goods.size());
+    for (i_pt = 0; i_pt < goods.size(); ++i_pt)
+      (*inliers)[i_pt] = points[goods[i_pt]];
+  }
+  perspectiveEgoMotionSVD(goods, pointsN, M);
+  
+  M = H[1] * M * H[0].inv();
 }

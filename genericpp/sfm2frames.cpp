@@ -1,5 +1,6 @@
 #include "genericpp/sfm2frames.hpp"
 #include "genericpp/LM.hpp"
+#include "genericpp/random.hpp"
 
 void GetTrackedPoints(const mat3b & im1, const mat3b & im2, vector<TrackedPoint> & points_out, 
 		      int maxCorners, float qualityLevel, float minDistance, int blockSize,
@@ -112,6 +113,7 @@ void GetCameraMatricesFromFundMat(const matf & fundmat, matf & P1, matf & P2) {
   copyCol(e2, P2, 0, 3);
 }
 
+
 Mat GetFundamentalMat(const vector<TrackedPoint> & trackedPoints,
 		      vector<TrackedPoint>* inliers,
 		      double ransac_max_dist, double ransac_p) {
@@ -159,6 +161,111 @@ Mat GetFundamentalMat(const vector<TrackedPoint> & trackedPoints,
   //return H_out[1].inv().t() * (matf)mat * H_out[0].inv();
   return mat;
 }
+
+matf GetFundamentalMat8Points(const vector<TrackedPoint> & points,
+			      const vector<size_t> & sample) {
+  size_t n = sample.size();
+  matf A(max(n, (size_t)9), 9);
+  for (size_t i = 0; i < n; ++i) {
+    const TrackedPoint & p = points[sample[i]];
+    A(i, 0) = p.x1 * p.x2;
+    A(i, 1) = p.y1 * p.x2;
+    A(i, 2) =        p.x2;
+    A(i, 3) = p.x1 * p.y2;
+    A(i, 4) = p.y1 * p.y2;
+    A(i, 5) =        p.y2;
+    A(i, 6) = p.x1;
+    A(i, 7) = p.y1;
+    A(i, 8) = 1.0f;
+  }
+  for (size_t i = n; i < 9; ++i)
+    for (size_t j = 0; j < 9; ++j)
+      A(i, j) = 0.0f;
+  SVD svd(A);
+  matf F(3, 3);
+  F(0,0) = svd.vt.at<float>(8, 0);
+  F(0,1) = svd.vt.at<float>(8, 1);
+  F(0,2) = svd.vt.at<float>(8, 2);
+  F(1,0) = svd.vt.at<float>(8, 3);
+  F(1,1) = svd.vt.at<float>(8, 4);
+  F(1,2) = svd.vt.at<float>(8, 5);
+  F(2,0) = svd.vt.at<float>(8, 6);
+  F(2,1) = svd.vt.at<float>(8, 7);
+  F(2,2) = svd.vt.at<float>(8, 8);
+  
+  // make F singular
+  SVD svdF(F);
+  svdF.w.at<float>(2, 0) = 0.0f;
+  return svdF.u * Mat::diag(svdF.w) * svdF.vt;
+}
+
+/*
+float fundmatDistRansac(const matf & F, const matf & e1, const matf & e2,
+			const TrackedPoint & p) {
+  matf l = p.getP(1).t() * F;
+  float a = l(0,0), b = l(0,1), c = l(0,2);
+  //cout << a << " " << b << " " << c << " " << e1(0,0) << " " << e1(1,0) << endl;
+  float d1 = abs(e1(0,0) * a + e1(1,0) * b + c) / sqrt(a*a + b*b);
+  l = F * p.getP(0);
+  a = l(0,0); b = l(1,0); c = l(2,0);
+  float d2 = abs(e2(0,0) * a + e2(1,0) * b + c) / sqrt(a*a + b*b);
+  return d1*d1 + d2*d2;
+  }
+#if 0
+float fundmatDistRansac(const matf & F, const matf & e1, const matf & e2,
+			const TrackedPoint & p) {
+  return norm(p.getP(1).t() * F * p.getP(0));
+  }
+#endif
+
+Mat GetFundamentalMat(const vector<TrackedPoint> & points,
+		      vector<TrackedPoint>* inliers,
+		      double ransac_max_dist, double ransac_p) {
+  size_t n_pts = points.size();
+  vector<TrackedPoint> pointsN;
+  vector<matf> H;
+  NormalizePoints2(points, pointsN, H);
+  
+  size_t i_trial, n_trials = 100000, i_pt, n_goods, i_goods = 0;
+  float dist_pt, total_dist, best_dist = 0, logp = log(1.0f - ransac_p);
+  vector<size_t> goods_v[2], sample(size_t(8));
+  matf F, e1, e2;
+  for (i_trial = 0; i_trial < n_trials; ++i_trial) {
+    vector<size_t> & goods = goods_v[i_goods];
+    goods.clear();
+    total_dist = 0;
+    GetRandomSample(sample, 0, n_pts);
+    F = GetFundamentalMat8Points(pointsN, sample);
+    GetEpipolesFromFundMat(F, e1, e2);
+    e1 = e1/e1(2,0);
+    e2 = e2/e2(2,0);
+    for (i_pt = 0; i_pt < n_pts; ++i_pt) {
+      dist_pt = fundmatDistRansac(F, e1, e2, pointsN[i_pt]);
+      if (dist_pt < ransac_max_dist) {
+	total_dist += dist_pt;
+	goods.push_back(i_pt);
+      }
+    }
+    n_goods = goods.size();
+    n_trials = round(logp / log(1.0f - pow(((float)n_goods)/n_pts, 8)));
+    if ((n_goods > goods_v[1-i_goods].size()) ||
+	((n_goods == goods_v[1-i_goods].size()) && (total_dist < best_dist))) {
+      cout << n_goods << " " << dist_pt << endl;
+      i_goods = 1-i_goods;
+      best_dist = total_dist;
+    }
+  }
+  vector<size_t> goods = goods_v[1-i_goods];
+  if (inliers) {
+    inliers->resize(goods.size());
+    for (i_pt = 0; i_pt < goods.size(); ++i_pt)
+      (*inliers)[i_pt] = points[goods[i_pt]];
+  }
+  F = GetFundamentalMat8Points(pointsN, goods);
+  return H[1].inv().t() * F * H[0].inv();
+  //return F;
+}
+*/
 
 /*
 class EstimateFundMatNL {

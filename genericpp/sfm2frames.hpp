@@ -45,6 +45,11 @@ void GetEpipolesFromFundMat(const matf & fundmat, matf & e1, matf & e2);
 
 void GetCameraMatricesFromFundMat(const matf & fundmat, matf & P1, matf & P2);
 
+// HZ p 282 algo 11.1
+// 8 points algorithm
+matf GetFundamentalMat8Points(const vector<TrackedPoint> & trackedPoints,
+			      const vector<size_t> & sample);
+
 Mat GetFundamentalMat(const vector<TrackedPoint> & trackedPoints,
 		      vector<TrackedPoint>* inliers = NULL,
 		      double ransac_max_dist = 0.02, double ransac_p = 0.99);

@@ -1,6 +1,9 @@
 #include "genericpp/epipoles.hpp"
 #include <cstdlib>
 #include <cmath>
+#include <utility>
+#include "genericpp/ransac.hpp"
+#include "genericpp/LM.hpp"
 
 matf GetEpipoleFrom2Lines(const matf & lines, int l1, int l2) {
   matf e(3, 1);
@@ -67,4 +70,386 @@ matf GetEpipoleFromLinesRansac(const matf & lines, float d, float p) {
   }
   //cout << gds.size() << " inliers" << endl;
   return GetEpipoleFromLinesSVD(inliers);
+}
+
+#if 1
+#include<gsl/gsl_block.h>
+#include<gsl/gsl_matrix.h>
+#include<gsl/gsl_linalg.h>
+void cv2gsl(const matd & Mcv, gsl_matrix & Mgsl) {
+  Mgsl.size1 = Mcv.size().height;
+  Mgsl.size2 = Mcv.size().width;
+  Mgsl.tda = Mcv.step1();
+  Mgsl.data = (double*)Mcv.ptr(0);
+  Mgsl.block = NULL;
+  Mgsl.owner = 0;
+}
+void QR_decomp(matd & A, matd & Q, matd & R) {
+  const size_t m = A.size().height, n = A.size().width;
+  gsl_matrix gA, gQ, gR;
+  cv2gsl(A, gA);
+  Q = matd(m, m);
+  R = matd(m, n);
+  cv2gsl(Q, gQ);
+  cv2gsl(R, gR);
+  //gsl_matrix* test = (gsl_matrix*)gsl_matrix_float_alloc(m, n);
+  gsl_vector* tau = gsl_vector_alloc(min(m, n));
+  gsl_linalg_QR_decomp(&gA, tau);
+  //cout << "A: " << gA.size1 << " " << gA.size2 << " |Q: " << gQ.size1 << " " << gQ.size2
+  //     << " |tau: " << tau->size << " |R: " << gR.size1 << " " << gR.size2 << endl;
+  gsl_linalg_QR_unpack(&gA, tau, &gQ, &gR);
+  gsl_vector_free(tau);
+}
+#else
+#include "f2c.h"
+#include "lapack.h"
+void QR_decomp(matd & A, matd & Q, matd & R) {
+  matf At = matf(A.size().width, A.size().height);
+  A.t().copyTo(At);
+  int lwork = At.size().width;
+  float* tau = new float[min(A.size().height, A.size().width)];
+  float* work = new float[lwork];
+  int info;
+  sgeqrf_(At.size().height, At.size().width, At.ptr(0), At.size().height, tau,
+	  work, lwork, &info);
+  delete[] tau;
+  delete[] work;
+}
+#endif
+matf nullSpace(matf & A, int rank) { //destroys A
+  matd Q(0,0), R(0,0);
+  matd Ad(A.size(), CV_64F);
+  ((matf)A.t()).convertTo(Ad, CV_64F);
+  QR_decomp(Ad, Q, R);
+  Mat ret;
+  Q.colRange(rank, A.size().width).convertTo(ret, CV_32F);
+  return ret;
+}
+
+void GetEpipolesSubspace(const vector<TrackedPoint> & points, matf & t) {
+  const size_t n = points.size();
+  cout << n << endl;
+  //clock_t time = clock();
+  assert(n > 6);
+  //matf phi(n, n, 0.0f), M(3, n);
+  matf phi(6, n), M(3, n);
+  for (size_t i = 0; i < n; ++i) {
+    const TrackedPoint & p = points[i];
+    phi(0, i) = p.x2 * p.x2;
+    phi(1, i) = p.y2 * p.x2;
+    phi(2, i) =        p.x2;
+    phi(3, i) = p.y2 * p.y2;
+    phi(4, i) =        p.y2;
+    phi(5, i) = 1.0f       ;
+    M  (0, i) = p.y1        -        p.y2;
+    M  (1, i) =        p.x2 - p.x1       ;
+    M  (2, i) = p.x1 * p.y2 - p.y1 * p.x2;
+  }
+  //SVD svdphi(phi);
+  //matf MCt = svdphi.vt.rowRange(6, n) * M.t();
+  matf MCt = (M * nullSpace(phi, 6)).t();
+  SVD svdmc(MCt);
+  t = svdmc.vt.row(2).t();
+}
+
+/*
+void GetEpipolesLinSubspaceElem(const vector<TrackedPoint> & points,
+				const vector<size_t> & sample, matf & t) {
+  const size_t n = points.size();
+  assert(n > 3);
+  matf phi(3, n);
+  for (size_t i = 0; i < n; ++i) {
+    const TrackedPoint & p = points[i];
+    phi(0, i) = p.x2;
+    phi(1, i) = p.y2;
+    phi(2, i) = 1.0f;
+  }
+  //SVD svdphi(phi);
+  //matf MCt = svdphi.vt.rowRange(6, n) * M.t();
+  matf MCt = (M * nullSpace(phi, 3)).t();
+  SVD svdmc(MCt);
+  t = svdmc.vt.row(2).t();  
+}
+*/
+
+
+class RansacParametersGetEpipolesFromImages {
+public:
+  typedef TrackedPoint Point;
+  typedef pair<matf, matf> Model;
+  typedef int Normalizer;
+  static const size_t s = 4;
+  static void getModel(const vector<size_t> & sample, const vector<Point> & points,
+		       Model & model) {
+    size_t n = sample.size();
+    matf A(2*n, 4);
+    for (size_t i = 0; i < n; ++i) {
+      const Point & p = points[sample[i]];
+      A(2*i  , 0) =   p.x1;
+      A(2*i  , 1) = - p.y1;
+      A(2*i  , 2) =   1.0f;
+      A(2*i  , 3) =   0.0f;
+      A(2*i+1, 0) =   p.y1;
+      A(2*i+1, 1) =   p.x1;
+      A(2*i+1, 2) =   0.0f;
+      A(2*i+1, 3) =   1.0f;
+    }
+    SVD svd(A);
+    matf model1(3,3,0.0f);
+    model1(0,0) =   svd.vt.at<float>(3, 0);
+    model1(0,1) = - svd.vt.at<float>(3, 1);
+    model1(0,2) =   svd.vt.at<float>(3, 2);
+    model1(1,0) =   svd.vt.at<float>(3, 1);
+    model1(1,1) =   svd.vt.at<float>(3, 0);
+    model1(1,2) =   svd.vt.at<float>(3, 3);
+    model1(2,2) =   1.0f;
+    model = pair<matf, matf>(model1, model1.inv());
+  }
+  static float getDist(const Model & model, const Point & p) {
+    matf v(3,1);
+    v(0,0) = p.x1; v(1,0) = p.y1; v(2,0) = 1.0f;
+    v = model.first * v;
+    float dx = v(0,0) - p.x2, dy = v(1,0) - p.y2;
+    float d = dx*dx + dy*dy;
+    v(0,0) = p.x2; v(1,0) = p.y2; v(2,0) = 1.0f;
+    v = model.second * v;
+    dx = v(0,0) - p.x1;
+    dy = v(1,0) - p.y1;
+    return d + dx*dx + dy*dy;
+  }
+  static void Normalize(const vector<Point> & points, vector<Point> & points_out,
+			Normalizer & H) {
+    points_out.resize(points.size());
+    for (size_t i = 0; i < points.size(); ++i)
+      points_out[i] = points[i];
+    H = 0;
+  }
+  static void Denormalize(const Model & model, const Normalizer & H, Model & model_out) {
+    model_out.first = model.first.clone();
+    model_out.second = model.second.clone();
+  }
+};
+
+void GetEpipolesFromImages(const mat3b & im1, const mat3b & im2, const matf & K,
+			   matf & H, vector<TrackedPoint> & points,
+			   vector<TrackedPoint> & inliers,
+			   int maxPoints, float pointsQuality, float pointsMinDistance,
+			   int featuresBlockSize, int trackerWinSize, int trackerMaxLevel,
+			   float ransacMaxDist) {
+  points.clear();
+  GetTrackedPoints(im1, im2, points, maxPoints, pointsQuality, pointsMinDistance,
+		   featuresBlockSize, trackerWinSize, trackerMaxLevel, 100, 1.0f);
+  vector<TrackedPoint> pointsN;
+  matf Kinv = K.inv();
+  matf v(3,1), u(3,1);
+  for (size_t i = 0; i < points.size(); ++i) {
+    const TrackedPoint & p = points[i];
+    v(0,0) = p.x1; v(1,0) = p.y1; v(2,0) = 1.0f;
+    u(0,0) = p.x2; u(1,0) = p.y2; u(2,0) = 1.0f;
+    v = Kinv * v; v = v/v(2,0);
+    u = Kinv * u; u = u/u(2,0);
+    pointsN.push_back(TrackedPoint(v(0,0), v(1,0), u(0,0), u(1,0)));
+  }
+  pair<matf, matf> model;
+  Ransac<RansacParametersGetEpipolesFromImages>(pointsN, model, inliers, ransacMaxDist);
+  H = model.first;
+  for (size_t i = 0; i < inliers.size(); ++i) {
+    const TrackedPoint & p = inliers[i];
+    v(0,0) = p.x1; v(1,0) = p.y1; v(2,0) = 1.0f;
+    u(0,0) = p.x2; u(1,0) = p.y2; u(2,0) = 1.0f;
+    v = K * v; v = v/v(2,0);
+    u = K * u; u = u/u(2,0);
+    inliers[i] = TrackedPoint(v(0,0), v(1,0), u(0,0), u(1,0));
+  }
+}
+
+void GetHFromPointsAndEpipole(const vector<TrackedPoint> & points,
+			      const matf & e_, matf & H) {
+  size_t n = points.size();
+  matf A(3*n, 9);
+  matf e = e_/e_(2,0);
+  cout << "e\n" << e << endl;
+  const float e1 = e(0,0), e2 = e(1,0);
+  for (size_t i = 0; i < n; ++i) {
+    const TrackedPoint & p = points[i];
+    const float x1 = p.x1, x2 = p.x2, y1 = p.y1, y2 = p.y2;
+    const float ep = e1*x2 + e2*y2 + 1.0f;
+    A(3*i  , 0) = x1*(e1*x2 - ep);
+    A(3*i  , 1) = y1*(e1*x2 - ep);
+    A(3*i  , 2) =    (e1*x2 - ep);
+    A(3*i  , 3) = x1* e2*x2      ;
+    A(3*i  , 4) = y1* e2*x2      ;
+    A(3*i  , 5) =     e2*x2      ;
+    A(3*i  , 6) = x1*    x2      ;
+    A(3*i  , 7) = y1*    x2      ;
+    A(3*i  , 8) =        x2      ;
+    A(3*i+1, 0) = x1* e1*y2      ;
+    A(3*i+1, 1) = y1* e1*y2      ;
+    A(3*i+1, 2) =     e1*y2      ;
+    A(3*i+1, 3) = x1*(e2*y2 - ep);
+    A(3*i+1, 4) = y1*(e2*y2 - ep);
+    A(3*i+1, 5) =    (e2*y2 - ep);
+    A(3*i+1, 6) = x1*    y2      ;
+    A(3*i+1, 7) = y1*    y2      ;
+    A(3*i+1, 8) =        y2      ;
+    A(3*i+2, 0) = x1* e1         ;
+    A(3*i+2, 1) = y1* e1         ;
+    A(3*i+2, 2) =     e1         ;
+    A(3*i+2, 3) = x1* e2         ;
+    A(3*i+2, 4) = y1* e2         ;
+    A(3*i+2, 5) =     e2         ;
+    A(3*i+2, 6) = x1*(1.0f  - ep);
+    A(3*i+2, 7) = y1*(1.0f  - ep);
+    A(3*i+2, 8) =    (1.0f  - ep);
+  }
+  SVD svd(A);
+  cout << svd.w << endl;
+  for (int i = 0; i < 3; ++i)
+    for (int j = 0; j < 3; ++j)
+      H(i, j) = svd.vt.at<float>(8, i*3+j);
+  H = H/norm(H);
+}
+
+int Raxis[3][8] = {
+  {1, 1, 1, 2, 2, 1, 2, 2},
+  {0, 0, 0, 2, 2, 0, 2, 2},
+  {0, 0, 0, 1, 1, 0, 1, 1}
+};
+class DistEpipoleNL {
+public:
+  static const float PI05 = 1.5707963267948966f;
+  static matf RElem(int axis, float angle, bool deriv) {
+    matf ret(3,3, 0.0f);
+    ret(axis, axis) = (deriv) ? 0.0f : 1.0f;
+    ret(Raxis[axis][0], Raxis[axis][1]) =  cos(angle);
+    ret(Raxis[axis][2], Raxis[axis][3]) = -sin(angle);
+    ret(Raxis[axis][4], Raxis[axis][5]) =  sin(angle);
+    ret(Raxis[axis][6], Raxis[axis][7]) =  cos(angle);
+    return ret;
+  }
+  static matf getR(float alpha, float beta, float gamma, int deriv = -1) {
+    matf ret =  RElem(0, alpha + ((deriv==0)?PI05:0.0f), deriv==0);
+    ret = ret * RElem(1, beta  + ((deriv==1)?PI05:0.0f), deriv==1);
+    ret = ret * RElem(2, gamma + ((deriv==2)?PI05:0.0f), deriv==2);
+    return ret;
+  }
+  const vector<size_t> & sample;
+  const vector<TrackedPoint> & points;
+  const size_t n;
+public:
+  DistEpipoleNL(const vector<size_t> & sample, const vector<TrackedPoint> & points)
+    :sample(sample), points(points), n(sample.size()) {};
+  matf f(const matf & a) const {
+    float alpha = a(0,0), beta = a(1,0), gamma = a(2,0);
+    matf e(3, 1); e(0,0) = a(3,0); e(1,0) = a(4,0); e(2,0) = 1.0f;
+    matf R = getR(alpha, beta, gamma);
+    matf v(3,1);
+    matf eps = matf(n, 1);
+    for (size_t i = 0; i < n; ++i) {
+      const TrackedPoint & p = points[sample[i]];
+      v = - p.getP(1).cross(R * p.getP(0));
+      float nu = v(0,0) * v(0,0) + v(1,0) * v(1,0);
+      eps(i,0) = v.dot(e)/sqrt(nu);
+    }
+    return eps;
+  }
+  matf dA(const matf & a) const {
+    float alpha = a(0,0), beta = a(1,0), gamma = a(2,0);
+    matf R = getR(alpha, beta, gamma);
+    matf dRx = getR(alpha, beta, gamma, 0);
+    matf dRy = getR(alpha, beta, gamma, 1);
+    matf dRz = getR(alpha, beta, gamma, 2);
+    matf v(3,1), eN(3, 1), u(3,1), dv(3, 1);
+    matf e(3, 1); e(0,0) = a(3,0); e(1,0) = a(4,0); e(2,0) = 1.0f;
+    u(2,0) = 0.0f;
+    matf deps = matf(n, 5);
+    for (size_t i = 0; i < n; ++i) {
+      const TrackedPoint & p = points[sample[i]];
+      v = - p.getP(1).cross(R * p.getP(0));
+      float nu = v(0,0) * v(0,0) + v(1,0) * v(1,0);
+      eN = e / sqrt(nu);
+      u(0,0) = v(0,0) / nu;
+      u(1,0) = v(1,0) / nu;
+      dv = -p.getP(1).cross(dRx * p.getP(0));
+      deps(i, 0) = eN.dot((u.dot(dv) * v) + dv);
+      dv = -p.getP(1).cross(dRy * p.getP(0));
+      deps(i, 1) = eN.dot((u.dot(dv) * v) + dv);
+      dv = -p.getP(1).cross(dRz * p.getP(0));
+      deps(i, 2) = eN.dot((u.dot(dv) * v) + dv);
+      deps(i, 3) = v(0,0) / sqrt(nu);
+      deps(i, 4) = v(1,0) / sqrt(nu);
+    }
+    return deps;
+  }
+};
+
+void GetEpipoleNLElem(const vector<size_t> & sample, const vector<TrackedPoint> & points,
+		      matf & e_out, matf & R_out, int n_max_iters) {
+  DistEpipoleNL denl(sample, points);
+  matf a, init(5, 1, 0.0f);
+  LM(matf(sample.size(), 1, 0.0f), init, denl, a, n_max_iters, 1e-5);
+  e_out(0, 0) = a(3, 0);
+  e_out(1, 0) = a(4, 0);
+  e_out(2, 0) = 1.0f;
+  denl.getR(a(0,0), a(1,0), a(2,0)).copyTo(R_out);
+}
+
+class RansacParametersGetEpipoleNL {
+public:
+  typedef TrackedPoint Point;
+  typedef pair<matf, matf> Model;
+  typedef int Normalizer;
+  static const size_t s = 5;
+  static void getModel(const vector<size_t> & sample, const vector<Point> & points,
+		       Model & model) {
+    resizeMat(model.first, 3, 1);
+    resizeMat(model.second, 3, 3);
+    GetEpipoleNLElem(sample, points, model.first, model.second, 100);
+  }
+  static float getDist(const Model & model, const Point & p) {
+    const matf d = (model.second * p.getP(0)).cross(p.getP(1));
+    const float a = d(0,0), b = d(1,0), c = d(2,0);
+    return abs(a*model.first(0,0) + b*model.first(1,0) + c) / sqrt(a*a + b*b);
+  }
+  static void Normalize(const vector<Point> & points, vector<Point> & points_out,
+			Normalizer & H) {
+    points_out.resize(points.size());
+    for (size_t i = 0; i < points.size(); ++i)
+      points_out[i] = points[i];
+    H = 0;
+  }
+  static void Denormalize(const Model & model, const Normalizer & H, Model & model_out) {
+    model_out.first = model.first.clone();
+    model_out.second = model.second.clone();
+  }
+};
+
+void GetEpipoleNL(const vector<TrackedPoint> & points, matf & K, float ransacMaxDist,
+		  vector<TrackedPoint> & inliers, matf & R_out, matf & e_out) {
+  vector<TrackedPoint> pointsN;
+  matf Kinv = K.inv();
+  matf v(3,1), u(3,1);
+  for (size_t i = 0; i < points.size(); ++i) {
+    const TrackedPoint & p = points[i];
+    v(0,0) = p.x1; v(1,0) = p.y1; v(2,0) = 1.0f;
+    u(0,0) = p.x2; u(1,0) = p.y2; u(2,0) = 1.0f;
+    v = Kinv * v; v = v/v(2,0);
+    u = Kinv * u; u = u/u(2,0);
+    pointsN.push_back(TrackedPoint(v(0,0), v(1,0), u(0,0), u(1,0)));
+  }
+  inliers.clear();
+  pair<matf, matf> model;
+  model.first = matf(3,1);
+  model.second = matf(3,3);
+  Ransac<RansacParametersGetEpipoleNL>(pointsN, model, inliers, ransacMaxDist);
+  for (size_t i = 0; i < inliers.size(); ++i) {
+    const TrackedPoint & p = inliers[i];
+    v(0,0) = p.x1; v(1,0) = p.y1; v(2,0) = 1.0f;
+    u(0,0) = p.x2; u(1,0) = p.y2; u(2,0) = 1.0f;
+    v = K * v; v = v/v(2,0);
+    u = K * u; u = u/u(2,0);
+    inliers[i] = TrackedPoint(v(0,0), v(1,0), u(0,0), u(1,0));
+  }
+  model.first.copyTo(e_out);
+  model.second.copyTo(R_out);
 }

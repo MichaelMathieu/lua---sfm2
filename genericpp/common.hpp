@@ -42,6 +42,12 @@ inline void copyMat(const Mat & src, Mat & dst) {
   }
 }
 
+template<typename scalar>
+inline void resizeMat(Mat_<scalar> & M, size_t h, size_t w) {
+  if ((M.size().height != h) || (M.size().width != w))
+    M = Mat_<scalar>(h, w);
+}
+
 // reads and resizes
 mat3b ReadImage(const string & filename, float scale = 1.0f);
 
