@@ -189,7 +189,7 @@ function sfm2.getPerspectiveEpipolarEgoMotion_testme()
 end
 
 function sfm2.getEgoMotion(...)
-   self = {}
+   local self = {}
    xlua.unpack_class(
       self, {...}, 'sfm2.getEgoMotion', help_desc,
       {arg='im1', type='torch.Tensor', help='image 1'},
