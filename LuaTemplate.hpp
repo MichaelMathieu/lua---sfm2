@@ -15,6 +15,9 @@ extern "C" {
 template<typename T> inline T FromLuaStack(lua_State* L, int i) {
   THerror("Call of FromLuaStack on a non-implemented type");
 }
+template<> inline bool FromLuaStack<bool>(lua_State* L, int i) {
+  return (bool)lua_toboolean(L, i);
+}
 template<> inline int FromLuaStack<int>(lua_State* L, int i) {
   return (int)lua_tointeger(L, i);
 }

@@ -4,6 +4,9 @@
 #include "genericpp/common.hpp"
 #include "genericpp/egoMotion.hpp"
 #include "genericpp/calibration.hpp"
+#include "genericpp/sfm2frames.hpp"
+#include "genericpp/epipoles.hpp"
+#include "genericpp/random.hpp"
 
 template<typename Treal>
 mat3b THTensorToMat3b(const THTensor<Treal> & im) {
@@ -15,9 +18,9 @@ mat3b THTensorToMat3b(const THTensor<Treal> & im) {
     mat3b ret(h, w);
     for (int i = 0; i < h; ++i)
       for (int j = 0; j < w; ++j)
-	ret(i,j)=Vec3b(min<Treal>(255., max<Treal>(0.0, im_p[is[0]*2+is[1]*i+is[2]*j]*255)),
-		       min<Treal>(255., max<Treal>(0.0, im_p[is[0]  +is[1]*i+is[2]*j]*255)),
-		       min<Treal>(255., max<Treal>(0.0, im_p[        is[1]*i+is[2]*j]*255)));
+	ret(i,j)=Vec3b(min<Treal>(255., max<Treal>(0.0, im_p[is[0]*2+is[1]*i+is[2]*j]*255.)),
+		       min<Treal>(255., max<Treal>(0.0, im_p[is[0]  +is[1]*i+is[2]*j]*255.)),
+		       min<Treal>(255., max<Treal>(0.0, im_p[is[0]*0+is[1]*i+is[2]*j]*255.)));
     return ret;
   } else if (im.size(2) == 3) {
     long h = im.size(0);
@@ -27,9 +30,9 @@ mat3b THTensorToMat3b(const THTensor<Treal> & im) {
     mat3b ret(h, w);
     for (int i = 0; i < h; ++i)
       for (int j = 0; j < w; ++j)
-	ret(i,j)=Vec3b(min<Treal>(255., max<Treal>(0.0, im_p[is[0]*i+is[1]*j+is[2]*2]*255)),
-		       min<Treal>(255., max<Treal>(0.0, im_p[is[0]*i+is[1]*j+is[2]  ]*255)),
-		       min<Treal>(255., max<Treal>(0.0, im_p[is[0]*i+is[1]*j        ]*255)));
+	ret(i,j)=Vec3b(min<Treal>(255., max<Treal>(0.0, im_p[is[0]*i+is[1]*j+is[2]*2]*255.)),
+		       min<Treal>(255., max<Treal>(0.0, im_p[is[0]*i+is[1]*j+is[2]  ]*255.)),
+		       min<Treal>(255., max<Treal>(0.0, im_p[is[0]*i+is[1]*j+is[2]*0]*255.)));
     return ret;
   } else {
     THerror("THTensorToMat3b: tensor must be 3xHxW or HxWx3");
@@ -67,30 +70,84 @@ static int InverseMatrix(lua_State *L) {
   return 0;
 }
 
-//GetEgoMotion(image1(double), image2(double), K(float), Kinv(float), R_out(float),T_out(float))
+template<typename THreal>
+static int Get2DEgoMotion(lua_State* L) {
+  setLuaState(L);
+  THTensor<THreal> image1       = FromLuaStack<THTensor<THreal> >(L, 1);
+  THTensor<THreal> image2       = FromLuaStack<THTensor<THreal> >(L, 2);
+  THTensor<THreal> M_out        = FromLuaStack<THTensor<THreal> >(L, 3);
+  int   maxPoints_p             = FromLuaStack<int>  (L, 4);
+  float pointsQuality_p         = FromLuaStack<float>(L, 5);
+  float pointsMinDistance_p     = FromLuaStack<float>(L, 6);
+  int   featuresBlockSize_p     = FromLuaStack<int>  (L, 7);
+  int   trackerWinSize_p        = FromLuaStack<int>  (L, 8);
+  int   trackerMaxLevel_p       = FromLuaStack<int>  (L, 9);
+  float ransacMaxDist_p         = FromLuaStack<float>(L, 10);
+  int   mode                    = FromLuaStack<int>  (L, 11);
+
+  mat3b im1_cv = THTensorToMat3b(image1);
+  mat3b im2_cv = THTensorToMat3b(image2);
+  vector<TrackedPoint> trackedPoints;
+  vector<TrackedPoint> found, inliers;
+  matf M_cv;
+  if (mode == 0) {
+    M_cv = matf(4, 1);
+    getIsometricEgoMotionFromImages(im1_cv, im2_cv, M_cv,
+				    found, inliers, maxPoints_p, pointsQuality_p,
+				    pointsMinDistance_p, featuresBlockSize_p, trackerWinSize_p,
+				    trackerMaxLevel_p, ransacMaxDist_p);
+  } else if (mode == 1) {
+    M_cv = matf(3, 3);
+    getPerspectiveEgoMotionFromImages(im1_cv, im2_cv, M_cv,
+				      found, inliers, maxPoints_p, pointsQuality_p,
+				      pointsMinDistance_p, featuresBlockSize_p,
+				      trackerWinSize_p, trackerMaxLevel_p, ransacMaxDist_p);
+  } else if (mode == 2) {
+    M_cv = matf(3, 3);
+    getPerspectiveEpipolarEgoMotionFromImages(im1_cv, im2_cv, M_cv,
+					      found, &inliers, maxPoints_p, pointsQuality_p,
+					      pointsMinDistance_p, featuresBlockSize_p,
+					      trackerWinSize_p, trackerMaxLevel_p,
+					      ransacMaxDist_p);
+  } else {
+    char buffer[1024];
+    sprintf(buffer, "get2dEgoMotion : Wrong mode : %d", mode);
+    THerror(buffer);
+  }
+  Mat M_out_cv = THTensorToMat<THreal>(M_out);
+  copyMat<float, THreal>(M_cv, M_out_cv);
+
+  PushOnLuaStack<int>(L, found.size());
+  PushOnLuaStack<int>(L, inliers.size());
+  return 2;
+}
+
 template<typename THreal>
 static int GetEgoMotion(lua_State *L) {
   setLuaState(L);
-  THTensor<THreal> image1 = FromLuaStack<THTensor<THreal> >(L, 1);
-  THTensor<THreal> image2 = FromLuaStack<THTensor<THreal> >(L, 2);
-  THTensor<float > K      = FromLuaStack<THTensor<float > >(L, 3);
-  THTensor<float > R_out  = FromLuaStack<THTensor<float > >(L, 4);
-  THTensor<float > T_out  = FromLuaStack<THTensor<float > >(L, 5);
-  int   maxPoints_p         = FromLuaStack<int>  (L, 6);
-  float pointsQuality_p     = FromLuaStack<float>(L, 7);
-  float pointsMinDistance_p = FromLuaStack<float>(L, 8);
-  int   featuresBlockSize_p = FromLuaStack<int>  (L, 9);
-  int   trackerWinSize_p    = FromLuaStack<int>  (L, 10);
-  int   trackerMaxLevel_p   = FromLuaStack<int>  (L, 11);
-  float ransacMaxDist_p     = FromLuaStack<float>(L, 12);
+  THTensor<THreal> image1       = FromLuaStack<THTensor<THreal> >(L, 1);
+  THTensor<THreal> image2       = FromLuaStack<THTensor<THreal> >(L, 2);
+  THTensor<float > K            = FromLuaStack<THTensor<float > >(L, 3);
+  THTensor<float > R_out        = FromLuaStack<THTensor<float > >(L, 4);
+  THTensor<float > T_out        = FromLuaStack<THTensor<float > >(L, 5);
+  THTensor<float > fundmat_out  = FromLuaStack<THTensor<float > >(L, 6);
+  THTensor<float > inliers_out  = FromLuaStack<THTensor<float > >(L, 7);
+  int   maxPoints_p             = FromLuaStack<int>  (L, 8);
+  float pointsQuality_p         = FromLuaStack<float>(L, 9);
+  float pointsMinDistance_p     = FromLuaStack<float>(L, 10);
+  int   featuresBlockSize_p     = FromLuaStack<int>  (L, 11);
+  int   trackerWinSize_p        = FromLuaStack<int>  (L, 12);
+  int   trackerMaxLevel_p       = FromLuaStack<int>  (L, 13);
+  float ransacMaxDist_p         = FromLuaStack<float>(L, 14);
 
-  assert((K.size(0) == 3) && (K.size(1) == 3) &&
-	 (R_out.size(0) == 3) && (R_out.size(1) == 3) &&
-	 (T_out.size(0) == 3));
-  assert((image1.size(0) == image2.size(0)) &&
-	 (image1.size(1) == image2.size(1)) && 
-	 (image1.size(2) == image2.size(2)));
-  assert(image1.size(0) == 3);
+  THassert((K.size(0) == 3) && (K.size(1) == 3) &&
+	   (R_out.size(0) == 3) && (R_out.size(1) == 3) &&
+	   (T_out.size(0) == 3));
+  THassert((image1.size(0) == image2.size(0)) &&
+	   (image1.size(1) == image2.size(1)) && 
+	   (image1.size(2) == image2.size(2)));
+  THassert(image1.size(0) == 3);
+  THcheckSize(fundmat_out, 3, 3);
 
   mat3b im1_cv = THTensorToMat3b(image1);
   mat3b im2_cv = THTensorToMat3b(image2);
@@ -98,15 +155,84 @@ static int GetEgoMotion(lua_State *L) {
   matf Kinv_cv = K_cv.inv();
   matf R_out_cv(3, 3, R_out.data());
   matf T_out_cv(3, 1, T_out.data());
-
-  int nFound, nInliers;
-  getEgoMotionFromImages(im1_cv, im2_cv, K_cv, Kinv_cv, R_out_cv, T_out_cv,
-			 &nFound, &nInliers, maxPoints_p, pointsQuality_p,
+  matf fundmat_cv(3, 3, fundmat_out.data());
+  
+  vector<TrackedPoint> found, inliers;
+  getEgoMotionFromImages(im1_cv, im2_cv, K_cv, Kinv_cv, R_out_cv, T_out_cv, fundmat_cv,
+			 found, inliers, maxPoints_p, pointsQuality_p,
 			 pointsMinDistance_p, featuresBlockSize_p, trackerWinSize_p,
 			 trackerMaxLevel_p, ransacMaxDist_p);
 
-  PushOnLuaStack<int>(L, nFound);
-  PushOnLuaStack<int>(L, nInliers);
+  if (inliers_out.size() != 0)
+    for (size_t i = 0; i < inliers.size(); ++i) {
+      inliers_out(i, 0) = inliers[i].x1;
+      inliers_out(i, 1) = inliers[i].y1;
+      inliers_out(i, 2) = inliers[i].x2;
+      inliers_out(i, 3) = inliers[i].y2;
+    }
+
+  PushOnLuaStack<int>(L, found.size());
+  PushOnLuaStack<int>(L, inliers.size());
+  return 2;
+}
+
+template<typename THreal>
+static int GetEgoMotion2(lua_State *L) {
+  setLuaState(L);
+  THTensor<THreal> image1       = FromLuaStack<THTensor<THreal> >(L, 1);
+  THTensor<THreal> image2       = FromLuaStack<THTensor<THreal> >(L, 2);
+  THTensor<float > K            = FromLuaStack<THTensor<float > >(L, 3);
+  THTensor<float > R_out        = FromLuaStack<THTensor<float > >(L, 4);
+  THTensor<float > T_out        = FromLuaStack<THTensor<float > >(L, 5);
+  THTensor<float > fundmat_out  = FromLuaStack<THTensor<float > >(L, 6);
+  THTensor<float > inliers_out  = FromLuaStack<THTensor<float > >(L, 7);
+  int   maxPoints_p             = FromLuaStack<int>  (L, 8);
+  float pointsQuality_p         = FromLuaStack<float>(L, 9);
+  float pointsMinDistance_p     = FromLuaStack<float>(L, 10);
+  int   featuresBlockSize_p     = FromLuaStack<int>  (L, 11);
+  int   trackerWinSize_p        = FromLuaStack<int>  (L, 12);
+  int   trackerMaxLevel_p       = FromLuaStack<int>  (L, 13);
+  float ransacMaxDist_p         = FromLuaStack<float>(L, 14);
+
+  THassert((K.size(0) == 3) && (K.size(1) == 3) &&
+	   (R_out.size(0) == 3) && (R_out.size(1) == 3) &&
+	   (T_out.size(0) == 3));
+  THassert((image1.size(0) == image2.size(0)) &&
+	   (image1.size(1) == image2.size(1)) && 
+	   (image1.size(2) == image2.size(2)));
+  THassert(image1.size(0) == 3);
+  THcheckSize(fundmat_out, 3, 3);
+
+  mat3b im1_cv = THTensorToMat3b(image1);
+  mat3b im2_cv = THTensorToMat3b(image2);
+  matf K_cv(3, 3, K.data());
+  matf Kinv_cv = K_cv.inv();
+  matf R_out_cv(3, 3, R_out.data());
+  matf T_out_cv(3, 1, T_out.data());
+  matf fundmat_cv(3, 3, fundmat_out.data());
+  
+  vector<TrackedPoint> found, inliers1, inliers;
+  GetTrackedPoints(im1_cv, im2_cv, found, maxPoints_p, pointsQuality_p, pointsMinDistance_p,
+  		   featuresBlockSize_p, trackerWinSize_p, trackerMaxLevel_p, 100, 1.0f);
+  /*getEgoMotionFromImages(im1_cv, im2_cv, K_cv, Kinv_cv, R_out_cv, T_out_cv, fundmat_cv,
+			 found, inliers1, maxPoints_p, pointsQuality_p,
+			 pointsMinDistance_p, featuresBlockSize_p, trackerWinSize_p,
+			 trackerMaxLevel_p, 0.5);*/
+  
+  //GetEpipoleNL(inliers1, K_cv, ransacMaxDist_p, inliers, R_out_cv, T_out_cv);
+  GetEpipoleNL(found, K_cv, ransacMaxDist_p, inliers, R_out_cv, T_out_cv);
+  R_out_cv = R_out_cv.inv();
+
+  if (inliers_out.size() != 0)
+    for (size_t i = 0; i < inliers.size(); ++i) {
+      inliers_out(i, 0) = inliers[i].x1;
+      inliers_out(i, 1) = inliers[i].y1;
+      inliers_out(i, 2) = inliers[i].x2;
+      inliers_out(i, 3) = inliers[i].y2;
+    }
+
+  PushOnLuaStack<int>(L, found.size());
+  PushOnLuaStack<int>(L, inliers.size());
   return 2;
 }
 
@@ -118,6 +244,7 @@ static int RemoveEgoMotion(lua_State *L) {
   THTensor<float > Rraw   = FromLuaStack<THTensor<float > >(L, 3);
   THTensor<THreal> output = FromLuaStack<THTensor<THreal> >(L, 4);
   THTensor<THreal> mask   = FromLuaStack<THTensor<THreal> >(L, 5);
+  bool           bilinear = FromLuaStack<bool             >(L, 6);
 
   THcheckSize(K, 3, 3);
   THassert((Rraw.size(0) == 3) && (Rraw.size(1) == 3));
@@ -140,21 +267,57 @@ static int RemoveEgoMotion(lua_State *L) {
   const long* os = output.stride();
   const long* ms = mask.stride();
   
-  int i, j, k, x, y;
+  int i, j, k;
   float xf, yf, wf;
-  for (i = 0; i < h; ++i)
-    for (j = 0; j < w; ++j) {
-      xf = R_p[0] * j + R_p[1] * i + R_p[2];
-      yf = R_p[3] * j + R_p[4] * i + R_p[5];
-      wf = R_p[6] * j + R_p[7] * i + R_p[8];
-      x = round(xf/wf);
-      y = round(yf/wf);
-      if ((x >= 0) && (y >= 0) && (x < w) && (y < h)) {
-	for (k = 0; k < nchannels; ++k)
-	  output_p[k*os[0] + i*os[1] + j*os[2] ] = input_p[k*is[0] + y*is[1] + x*is[2] ];
-	mask_p[i*ms[0] + j*ms[1]] = 1.0;
+  if (bilinear) {
+    int ix_nw, iy_nw, ix_ne, iy_ne, ix_sw, iy_sw, ix_se, iy_se;
+    float nw, ne, sw, se;
+    for (i = 0; i < h; ++i)
+      for (j = 0; j < w; ++j) {
+	wf = 1.0f / (R_p[6] * j + R_p[7] * i + R_p[8]);
+	xf = wf   * (R_p[0] * j + R_p[1] * i + R_p[2]);
+	yf = wf   * (R_p[3] * j + R_p[4] * i + R_p[5]);
+	if ((xf >= 0) && (yf >= 0) && (xf < w-1) && (yf < h-1)) {
+	  ix_nw = floor(xf);
+	  iy_nw = floor(yf);
+	  ix_ne = ix_nw + 1;
+	  iy_ne = iy_nw;
+	  ix_sw = ix_nw;
+	  iy_sw = iy_nw + 1;
+	  ix_se = ix_nw + 1;
+	  iy_se = iy_nw + 1;
+	  
+	  nw = (ix_se-xf)*(iy_se-yf);
+	  ne = (xf-ix_sw)*(iy_sw-yf);
+	  sw = (ix_ne-xf)*(yf-iy_ne);
+	  se = (xf-ix_nw)*(yf-iy_nw);
+	  
+	  for (k = 0; k < nchannels; ++k)
+	    output_p[k*os[0] + i*os[1] + j*os[2]] =
+	        input_p[k*os[0] + iy_nw*is[1] + ix_nw*is[2]] * nw
+	      + input_p[k*os[0] + iy_ne*is[1] + ix_ne*is[2]] * ne
+	      + input_p[k*os[0] + iy_sw*is[1] + ix_sw*is[2]] * sw
+	      + input_p[k*os[0] + iy_se*is[1] + ix_se*is[2]] * se;
+	  mask_p[i*ms[0] + j*ms[1]] = 1.0;
+		
+	}
       }
-    }
+  } else {
+    int x, y;
+    for (i = 0; i < h; ++i)
+      for (j = 0; j < w; ++j) {
+	xf = R_p[0] * j + R_p[1] * i + R_p[2];
+	yf = R_p[3] * j + R_p[4] * i + R_p[5];
+	wf = R_p[6] * j + R_p[7] * i + R_p[8];
+	x = round(xf/wf);
+	y = round(yf/wf);
+	if ((x >= 0) && (y >= 0) && (x < w) && (y < h)) {
+	  for (k = 0; k < nchannels; ++k)
+	    output_p[k*os[0] + i*os[1] + j*os[2]] = input_p[k*is[0] + y*is[1] + x*is[2]];
+	  mask_p[i*ms[0] + j*ms[1]] = 1.0;
+	}
+      }
+  }
   
   return 0;
 }
@@ -215,5 +378,91 @@ static int ChessboardCalibrate(lua_State* L) {
   copyMat<float, THreal>(K_float, K_cv);
   copyMat<float, THreal>(distP_float, distP_cv);
   
+  return 0;
+}
+
+template<typename THreal>
+static int GetEpipoles(lua_State* L) {
+  setLuaState(L);
+  THTensor<THreal> fundmat = FromLuaStack<THTensor<THreal> >(L, 1);
+  THTensor<THreal> e1      = FromLuaStack<THTensor<THreal> >(L, 2);
+  THTensor<THreal> e2      = FromLuaStack<THTensor<THreal> >(L, 3);
+
+  THcheckSize(fundmat, 3, 3);
+  THcheckSize(e1, 2);
+  THcheckSize(e2, 2);
+
+  Mat fundmat_cv = THTensorToMat<THreal>(fundmat);
+
+  matf fundmat_float(3, 3);
+  matf e1_float(3, 1), e2_float(3, 1);
+  copyMat<THreal, float>(fundmat_cv, fundmat_float);
+
+  GetEpipolesFromFundMat(fundmat_float, e1_float, e2_float);
+  //printf("%f %f\n", e2_float(2, 0), e1_float(2, 0));
+  e1(0) = e1_float(0,0)/e1_float(2,0);
+  e1(1) = e1_float(1,0)/e1_float(2,0);
+  e2(0) = e2_float(0,0)/e2_float(2,0);
+  e2(1) = e2_float(1,0)/e2_float(2,0);
+  
+  return 0;
+}
+
+template<typename THreal>
+static int GetEpipoleFromMatches(lua_State* L) {
+  setLuaState(L);
+  THTensor<THreal> matches = FromLuaStack<THTensor<THreal> >(L, 1);
+  THTensor<THreal> R       = FromLuaStack<THTensor<THreal> >(L, 2);
+  THTensor<THreal> K       = FromLuaStack<THTensor<THreal> >(L, 3);
+  THTensor<THreal> e       = FromLuaStack<THTensor<THreal> >(L, 4);
+  float d                  = FromLuaStack<float>(L, 5);
+  d=d+1;//remove warning
+
+  THassert(matches.size(1) == 4);
+  THcheckSize(R, 3, 3);
+  THcheckSize(K, 3, 3);
+  THcheckSize(e, 2);
+  int n = matches.size(0);
+  THassert(n >= 2);
+
+  matf K_cv = THTensorToMat<THreal>(K);
+  matf Kinv = K_cv.inv();
+  matf t, v1(3,1), v2(3,1);
+  vector<TrackedPoint> points;
+  for (int i = 0; i < n; ++i) {
+    v1(0,0) = matches(i,0);
+    v1(1,0) = matches(i,1);
+    v1(2,0) = 1.0f;
+    v1 = Kinv * v1; // last line of K is (0,0,1) so no need ot divide by v1(2,0)
+    v2(0,0) = matches(i,2);
+    v2(1,0) = matches(i,3);
+    v2(2,0) = 1.0f;
+    v2 = Kinv * v2;
+    points.push_back(TrackedPoint(v1(0,0), v1(1,0), v2(0,0), v2(1,0)));
+  }
+  GetEpipolesSubspace(points, t);
+  t = K_cv*t;
+  e(0) = t(0,0)/t(2,0);
+  e(1) = t(1,0)/t(2,0);
+
+  /*matf K_cv = THTensorToMat<THreal>(K);
+  matf R_cv = K_cv * THTensorToMat<THreal>(R).inv() * K_cv.inv();
+  matf lines_cv(n, 3);
+
+  matf v(3, 1);
+  for (int i = 0; i < n; ++i) {
+    v(0, 0) = matches(i, 0);
+    v(1, 0) = matches(i, 1);
+    v(2, 0) = 1.0f;
+    v = R_cv * v;
+    lines_cv(i, 0) = v(1, 0)                 - v(2, 0) * matches(i, 3);
+    lines_cv(i, 1) = v(2, 0) * matches(i, 2) - v(0, 0);
+    lines_cv(i, 2) = v(0, 0) * matches(i, 3) - v(1, 0) * matches(i, 2);
+  }  
+  matf e_cv = GetEpipoleFromLinesRansac(lines_cv, d);
+  e(0) = e_cv(0,0)/e_cv(2,0);
+  e(1) = e_cv(1,0)/e_cv(2,0);
+  */
+
   return 0;
 }

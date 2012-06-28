@@ -23,6 +23,7 @@ matf epscov(const matf & x) {
   return A;
 }
 
+#ifndef OPENCV_2_1
 string TensorToString(const matf & M) {
   assert(M.dims == 3);
   ostringstream oss;
@@ -30,7 +31,8 @@ string TensorToString(const matf & M) {
   oss << sliceTensor(const_cast<matf&>(M), 1) << endl;
   oss << sliceTensor(const_cast<matf&>(M), 2) << endl;
   return oss.str();
-}
+  }
+#endif
 
 void WritePLY(const string & filename, const matf & points, const matb* colors) {
   FILE* f = fopen(filename.c_str(), "w");

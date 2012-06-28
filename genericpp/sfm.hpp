@@ -7,4 +7,7 @@ static int GetEgoMotion(lua_State *L);
 template<typename THreal>
 static int RemoveEgoMotion(lua_State *L);
 
+template<typename THreal>
+static int GetEpipoles(lua_State *L);
+
 #endif
