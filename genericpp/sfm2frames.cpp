@@ -5,6 +5,7 @@
 void GetTrackedPoints(const mat3b & im1, const mat3b & im2, vector<TrackedPoint> & points_out, 
 		      int maxCorners, float qualityLevel, float minDistance, int blockSize,
 		      int winSize_, int maxLevel, int criteriaN, float criteriaEps) {
+#if 1
   const int useHarrisDetector = 0;
   const float k = 0.04f;
   const Size winSize(winSize_, winSize_);
@@ -38,6 +39,21 @@ void GetTrackedPoints(const mat3b & im1, const mat3b & im2, vector<TrackedPoint>
     if (status.at<unsigned char>(i,0))
       points_out.push_back(TrackedPoint(corners1.at<Vec2f>(i,0)[0],corners1.at<Vec2f>(i,0)[1],
 					corners2.at<Vec2f>(i,0)[0],corners2.at<Vec2f>(i,0)[1]));
+#endif
+#else
+  matb im1_gray, im2_gray;
+  cvtColor(im1, im1_gray, CV_BGR2GRAY);
+  cvtColor(im2, im2_gray, CV_BGR2GRAY);
+  Mat flow_cv(im1.size().height, im1.size().width, CV_32FC2);
+  calcOpticalFlowFarneback(im1_gray, im2_gray, flow_cv, 0.5, 5, 11, 10, 5, 1.1, 0);
+  
+  points_out.clear();
+  for (int i = 20; i < im1.size().height-20; i += 20)
+    for (int j = 20; j < im1.size().width-20; j += 20) {
+      const Vec2f f = flow_cv.at<Vec2f>(i, j);
+      points_out.push_back(TrackedPoint(j, i, j+f[0], i+f[1]));
+    }
+  cout << "n points " << points_out.size() << endl;
 #endif
 }
 

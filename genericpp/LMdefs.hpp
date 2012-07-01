@@ -1,13 +1,13 @@
 template<typename Function>
 void LM(const matf & X, const matf & initialGuess, const Function & func,
-	const matf & sigma, matf & a) {
-  float targetErr = 1e-5f;
+	const matf & sigma, matf & a, int max_iter, float target_err) {
   float lambda = 0.001f;
   a = initialGuess;
   matf eps = X - func.f(a);
   float oldErr = ((matf)(eps.t() * sigma * eps))(0,0), newErr;
   matf A, U, epsa, newa;
-  while (oldErr > targetErr) {
+  int iter = max_iter+1;
+  while ((oldErr > target_err) && (--iter)) {
     //cout << "Error " << oldErr << endl;
     A = func.dA(a);
     U = A.t() * sigma * A;

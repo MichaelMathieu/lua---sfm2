@@ -43,7 +43,7 @@ inline void copyMat(const Mat & src, Mat & dst) {
 }
 
 template<typename scalar>
-inline void resizeMat(Mat_<scalar> & M, size_t h, size_t w) {
+inline void resizeMat(Mat_<scalar> & M, int h, int w) {
   if ((M.size().height != h) || (M.size().width != w))
     M = Mat_<scalar>(h, w);
 }

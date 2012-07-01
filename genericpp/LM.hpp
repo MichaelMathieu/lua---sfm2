@@ -5,7 +5,7 @@
 
 template<typename Function>
 void LM(const matf & X, const matf & initialGuess, const Function & func,
-	const matf & sigma, matf & a_out);
+	const matf & sigma, matf & a_out, int max_iter = 10000, float target_err = 1e-5);
 
 template<typename Function>
 void LM(const matf & X, const matf & initialGuess, const Function & func, matf & a_out,

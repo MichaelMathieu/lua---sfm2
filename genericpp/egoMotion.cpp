@@ -17,7 +17,7 @@ void getEgoMotionFromImages(const mat3b & im1, const mat3b & im2,
   }
   fundMat = GetFundamentalMat(trackedPoints, &inliers, ransacMaxDist, 0.99);
   matf essMat = K.t() * fundMat * K;
-  
+
   matf P2;
   for (size_t iPt = 0; iPt < inliers.size(); ++iPt) {
     matf p1p = Kinv * inliers[iPt].getP1();

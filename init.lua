@@ -326,6 +326,12 @@ function sfm2.getEpipoleFromMatches(matches, R, K, d)
    return e
 end
 
+function sfm2.getOpticalFlow(im1, im2)
+   local ret = torch.Tensor(2, im1:size(2), im1:size(3))
+   im1.libsfm2.getOpticalFlow(im1, im2, ret)
+   return ret
+end
+
 function sfm2.testme()
    print("SFM: testme...")
 end

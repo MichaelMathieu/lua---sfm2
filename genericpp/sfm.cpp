@@ -211,16 +211,21 @@ static int GetEgoMotion2(lua_State *L) {
   matf T_out_cv(3, 1, T_out.data());
   matf fundmat_cv(3, 3, fundmat_out.data());
   
-  vector<TrackedPoint> found, inliers1, inliers;
+  vector<TrackedPoint> found, inliers1, inliers, inliers2;
   GetTrackedPoints(im1_cv, im2_cv, found, maxPoints_p, pointsQuality_p, pointsMinDistance_p,
   		   featuresBlockSize_p, trackerWinSize_p, trackerMaxLevel_p, 100, 1.0f);
-  /*getEgoMotionFromImages(im1_cv, im2_cv, K_cv, Kinv_cv, R_out_cv, T_out_cv, fundmat_cv,
-			 found, inliers1, maxPoints_p, pointsQuality_p,
-			 pointsMinDistance_p, featuresBlockSize_p, trackerWinSize_p,
-			 trackerMaxLevel_p, 0.5);*/
   
-  //GetEpipoleNL(inliers1, K_cv, ransacMaxDist_p, inliers, R_out_cv, T_out_cv);
-  GetEpipoleNL(found, K_cv, ransacMaxDist_p, inliers, R_out_cv, T_out_cv);
+  getEgoMotionFromImages(im1_cv, im2_cv, K_cv, Kinv_cv, R_out_cv, T_out_cv, fundmat_cv,
+			 found, inliers2, maxPoints_p, pointsQuality_p,
+			 pointsMinDistance_p, featuresBlockSize_p, trackerWinSize_p,
+			 trackerMaxLevel_p, 0.5);
+
+  T_out_cv(0,0) = T_out_cv(1,0) = 0.0f;
+  T_out_cv(2,0) = 1.0f;
+  ((matf)matf::eye(3,3)).copyTo(R_out_cv);
+  //GetEpipoleNL(found, K_cv, 5*ransacMaxDist_p, inliers1, R_out_cv, T_out_cv, 0.99f);
+  //GetEpipoleNL(inliers1, K_cv, 2.5*ransacMaxDist_p, inliers2, R_out_cv, T_out_cv, 0.95f);
+  GetEpipoleNL(inliers2, K_cv, ransacMaxDist_p, inliers, R_out_cv, T_out_cv, 0.9f);
   R_out_cv = R_out_cv.inv();
 
   if (inliers_out.size() != 0)
@@ -445,24 +450,32 @@ static int GetEpipoleFromMatches(lua_State* L) {
   e(0) = t(0,0)/t(2,0);
   e(1) = t(1,0)/t(2,0);
 
-  /*matf K_cv = THTensorToMat<THreal>(K);
-  matf R_cv = K_cv * THTensorToMat<THreal>(R).inv() * K_cv.inv();
-  matf lines_cv(n, 3);
+  return 0;
+}
 
-  matf v(3, 1);
-  for (int i = 0; i < n; ++i) {
-    v(0, 0) = matches(i, 0);
-    v(1, 0) = matches(i, 1);
-    v(2, 0) = 1.0f;
-    v = R_cv * v;
-    lines_cv(i, 0) = v(1, 0)                 - v(2, 0) * matches(i, 3);
-    lines_cv(i, 1) = v(2, 0) * matches(i, 2) - v(0, 0);
-    lines_cv(i, 2) = v(0, 0) * matches(i, 3) - v(1, 0) * matches(i, 2);
-  }  
-  matf e_cv = GetEpipoleFromLinesRansac(lines_cv, d);
-  e(0) = e_cv(0,0)/e_cv(2,0);
-  e(1) = e_cv(1,0)/e_cv(2,0);
-  */
+template<typename THreal>
+static int GetOpticalFlow(lua_State *L) {
+  setLuaState(L);
+  THTensor<THreal> image1       = FromLuaStack<THTensor<THreal> >(L, 1);
+  THTensor<THreal> image2       = FromLuaStack<THTensor<THreal> >(L, 2);
+  THTensor<THreal> flow         = FromLuaStack<THTensor<THreal> >(L, 3);
+
+  int h = image1.size(1), w = image1.size(2);
+
+  mat3b im1_cv = THTensorToMat3b(image1);
+  mat3b im2_cv = THTensorToMat3b(image2);
+  matb im1_gray, im2_gray;
+  cvtColor(im1_cv, im1_gray, CV_BGR2GRAY);
+  cvtColor(im2_cv, im2_gray, CV_BGR2GRAY);
+  Mat flow_cv(h, w, CV_32FC2);
+
+  calcOpticalFlowFarneback(im1_gray, im2_gray, flow_cv, 0.5, 5, 11, 10, 5, 1.1, 0);
+
+  for (int i = 0; i < h; ++i)
+    for (int j = 0; j < w; ++j) {
+      flow(0, i, j) = flow_cv.at<Vec2f>(i, j)[0];
+      flow(1, i, j) = flow_cv.at<Vec2f>(i, j)[1];
+    }
 
   return 0;
 }

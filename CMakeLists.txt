@@ -7,6 +7,11 @@ FIND_PACKAGE(OpenCV REQUIRED)
 
 SET(src THpp.cpp sfm.cpp genericpp/common.cpp genericpp/LM.cpp genericpp/sfm2frames.cpp genericpp/egoMotion.cpp genericpp/calibration.cpp genericpp/epipoles.cpp genericpp/random.cpp)
 SET(luasrc init.lua)
+#SET(USE_GSL)
+IF(DEFINED USE_GSL)
+SET(GSL_LIBS gsl m gslcblas)
+ADD_DEFINITIONS(-DUSE_GSL)
+ENDIF(DEFINED USE_GSL)
 
 ADD_TORCH_PACKAGE(sfm2 "${src}" "${luasrc}" "Structure From Motion")
-TARGET_LINK_LIBRARIES(sfm2 luaT TH ${OpenCV_LIBS} gsl m gslcblas)
+TARGET_LINK_LIBRARIES(sfm2 luaT TH ${OpenCV_LIBS} ${GSL_LIBS})

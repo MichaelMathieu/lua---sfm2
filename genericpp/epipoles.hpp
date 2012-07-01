@@ -18,5 +18,5 @@ void GetHFromPointsAndEpipole(const vector<TrackedPoint> & points,
 void GetEpipoleNLElem(const vector<size_t> & sample, const vector<TrackedPoint> & points,
 		      matf & e_out, matf & R_out, int n_max_iters = 1000);
 void GetEpipoleNL(const vector<TrackedPoint> & points, matf & K, float ransacMaxDist,
-		  vector<TrackedPoint> & inliers_out, matf & R_out, matf & e_out);
+		  vector<TrackedPoint> & inliers_out, matf & R_out, matf & e_out, float p);
 #endif
