@@ -215,26 +215,47 @@ static int GetEgoMotion2(lua_State *L) {
   GetTrackedPoints(im1_cv, im2_cv, found, maxPoints_p, pointsQuality_p, pointsMinDistance_p,
   		   featuresBlockSize_p, trackerWinSize_p, trackerMaxLevel_p, 100, 1.0f);
   
-  getEgoMotionFromImages(im1_cv, im2_cv, K_cv, Kinv_cv, R_out_cv, T_out_cv, fundmat_cv,
-			 found, inliers2, maxPoints_p, pointsQuality_p,
+  /*getEgoMotionFromImages(im1_cv, im2_cv, K_cv, Kinv_cv, R_out_cv, T_out_cv, fundmat_cv,
+			 found, inliers1, maxPoints_p, pointsQuality_p,
 			 pointsMinDistance_p, featuresBlockSize_p, trackerWinSize_p,
-			 trackerMaxLevel_p, 0.5);
+			 trackerMaxLevel_p, 0.5);*/
+
+  vector<TrackedPoint> foundN;
+  matf Kinv = K_cv.inv();
+  matf v(3,1), u(3,1);
+  for (size_t i = 0; i < found.size(); ++i) {
+    const TrackedPoint & p = found[i];
+    v(0,0) = p.x1; v(1,0) = p.y1; v(2,0) = 1.0f;
+    u(0,0) = p.x2; u(1,0) = p.y2; u(2,0) = 1.0f;
+    v = Kinv * v; v = v/v(2,0);
+    u = Kinv * u; u = u/u(2,0);
+    foundN.push_back(TrackedPoint(v(0,0), v(1,0), u(0,0), u(1,0)));
+  }
 
   T_out_cv(0,0) = T_out_cv(1,0) = 0.0f;
   T_out_cv(2,0) = 1.0f;
   ((matf)matf::eye(3,3)).copyTo(R_out_cv);
-  //GetEpipoleNL(found, K_cv, 5*ransacMaxDist_p, inliers1, R_out_cv, T_out_cv, 0.99f);
-  //GetEpipoleNL(inliers1, K_cv, 2.5*ransacMaxDist_p, inliers2, R_out_cv, T_out_cv, 0.95f);
-  GetEpipoleNL(inliers2, K_cv, ransacMaxDist_p, inliers, R_out_cv, T_out_cv, 0.9f);
+  GetEpipoleNL(foundN, K_cv, 5*ransacMaxDist_p, inliers1, R_out_cv, T_out_cv, 0.99f);
+  GetEpipoleNL(inliers1, K_cv, 2.5*ransacMaxDist_p, inliers2, R_out_cv, T_out_cv, 0.99f);
+  GetEpipoleNL(inliers2, K_cv, ransacMaxDist_p, inliers, R_out_cv, T_out_cv, 0.99f);
+  //GetEpipoleNL(found, K_cv, ransacMaxDist_p, inliers, R_out_cv, T_out_cv, 0.99f);
   R_out_cv = R_out_cv.inv();
 
-  if (inliers_out.size() != 0)
+  if (inliers_out.size() != 0) {
     for (size_t i = 0; i < inliers.size(); ++i) {
-      inliers_out(i, 0) = inliers[i].x1;
-      inliers_out(i, 1) = inliers[i].y1;
-      inliers_out(i, 2) = inliers[i].x2;
-      inliers_out(i, 3) = inliers[i].y2;
+      const TrackedPoint & p = inliers[i];
+      v(0,0) = p.x1; v(1,0) = p.y1; v(2,0) = 1.0f;
+      u(0,0) = p.x2; u(1,0) = p.y2; u(2,0) = 1.0f;
+      v = K_cv * v; v = v/v(2,0);
+      u = K_cv * u; u = u/u(2,0);
+      inliers[i] = TrackedPoint(v(0,0), v(1,0), u(0,0), u(1,0));
+      inliers_out(i, 0) = v(0,0);
+      inliers_out(i, 1) = v(1,0);
+      inliers_out(i, 2) = u(0,0);
+      inliers_out(i, 3) = u(1,0);
     }
+  }
+
 
   PushOnLuaStack<int>(L, found.size());
   PushOnLuaStack<int>(L, inliers.size());

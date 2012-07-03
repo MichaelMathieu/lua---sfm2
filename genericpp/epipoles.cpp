@@ -381,8 +381,8 @@ public:
       v = p.getP(1).cross(R * p.getP(0));
       float nu = v(0,0) * v(0,0) + v(1,0) * v(1,0);
       eN = e / sqrt(nu);
-      u(0,0) = -v(0,0) / nu;
-      u(1,0) = -v(1,0) / nu;
+      u(0,0) = v(0,0) / nu;
+      u(1,0) = v(1,0) / nu;
       dv = p.getP(1).cross(dRx * p.getP(0));
       deps(i, 0) = eN.dot((u.dot(dv) * v) + dv);
       dv = p.getP(1).cross(dRy * p.getP(0));
@@ -401,22 +401,38 @@ public:
   static const float PI05 = 1.5707963267948966f;
   static matf getR(float alpha, float ex, float ey) {
     matf ret =  matf(3,3);
-    ret(0,0) = ret(1,1) = cos(alpha);
-    ret(1,0) = sin(alpha);
-    ret(0,1) = -ret(1,0);
-    ret(0,2) = ex;
-    ret(1,2) = ey;
+    const float ca = cos(alpha), sa = sin(alpha);
+    ret(0,0) = ret(1,1) = ca;
+    ret(1,0) = sa;
+    ret(0,1) = -sa;
+    ret(0,2) = (1.0f - ca)*ex + sa*ey;
+    ret(1,2) = (1.0f - ca)*ey - sa*ex;
     ret(2,0) = ret(2,1) = 0.0f;
     ret(2,2) = 1.0f;
     return ret;
   }
-  static matf getdR(float alpha) {
+  static matf getdRalpha(float alpha, float ex, float ey) {
     matf ret =  matf(3,3, 0.0f);
-    ret(0,0) = ret(1,1) = -sin(alpha);
-    ret(1,0) = cos(alpha);
-    ret(0,1) = -ret(1,0);
+    const float ca = cos(alpha), sa = sin(alpha);
+    ret(0,0) = ret(1,1) = -sa;
+    ret(1,0) = ca;
+    ret(0,1) = -ca;
+    ret(0,2) = sa*ex + ca*ey;
+    ret(1,2) = sa*ey - ca*ex;
     return ret;
   }    
+  static matf getdRex(float alpha) {
+    matf ret =  matf(3,3, 0.0f);
+    ret(0,2) = 1-cos(alpha);
+    ret(1,2) = -sin(alpha);
+    return ret;
+  }
+  static matf getdRey(float alpha) {
+    matf ret =  matf(3,3, 0.0f);
+    ret(0,2) = sin(alpha);
+    ret(1,2) = 1-cos(alpha);
+    return ret;
+  }
   static float angleFromR(const matf & R_p) {
     return atan2(R_p(1,0), R_p(0,0));
   }
@@ -434,7 +450,7 @@ public:
     matf eps = matf(n, 1);
     for (size_t i = 0; i < n; ++i) {
       const TrackedPoint & p = points[sample[i]];
-      v = - p.getP(1).cross(R * p.getP(0));
+      v = p.getP(1).cross(R * p.getP(0));
       float nu = v(0,0) * v(0,0) + v(1,0) * v(1,0);
       eps(i,0) = v.dot(e)/sqrt(nu);
     }
@@ -443,22 +459,24 @@ public:
   matf dA(const matf & a) const {
     float alpha = a(0,0), ex = a(1,0), ey = a(2,0);
     matf e(3, 1); e(0,0) = ex; e(1,0) = ey; e(2,0) = 1.0f;
-    matf R = getR(alpha, ex, ey), dR = getdR(alpha);
-    matf v(3,1), eN(3, 1), u(3,1), dv(3, 1);
+    matf R = getR(alpha, ex, ey), dRa = getdRalpha(alpha, ex, ey);
+    matf dRx = getdRex(alpha), dRy = getdRey(alpha);
+    matf v(3,1), u(3,1), dv(3, 1);
     u(2,0) = 0.0f;
     matf deps = matf(n, 3);
     for (size_t i = 0; i < n; ++i) {
       const TrackedPoint & p = points[sample[i]];
-      v = - p.getP(1).cross(R * p.getP(0));
+      v = p.getP(1).cross(R * p.getP(0));
       float nu = v(0,0) * v(0,0) + v(1,0) * v(1,0);
-      eN = e / sqrt(nu);
       u(0,0) = v(0,0) / nu;
       u(1,0) = v(1,0) / nu;
-      dv = -p.getP(1).cross(dR * p.getP(0));
-      deps(i, 0) = eN.dot(dv - (u.dot(dv) * v));
+      dv = p.getP(1).cross(dRa * p.getP(0));
+      deps(i, 0) = (e/sqrt(nu)).dot(dv - (u.dot(dv) * v));
 
-      deps(i, 1) = (v(0,0) - ey + p.y2 + e.dot(v)/nu * v(1,0)) / sqrt(nu);
-      deps(i, 2) = (v(1,0) + ex - p.x2 - e.dot(v)/nu * v(0,0)) / sqrt(nu);
+      dv = p.getP(1).cross(dRx * p.getP(0));
+      deps(i, 1) = (v(0,0) + dv.dot(e - v.dot(e) * u)) / sqrt(nu);
+      dv = p.getP(1).cross(dRy * p.getP(0));
+      deps(i, 2) = (v(1,0) + dv.dot(e - v.dot(e) * u)) / sqrt(nu);
     }
     return deps;
   }
@@ -477,6 +495,7 @@ void GetEpipoleNLElem4(const vector<size_t> & sample, const vector<TrackedPoint>
   for (size_t i = 0; i < n; ++i)
     sigma(i, i) = norm(points[sample[i]].getP(0) - points[sample[i]].getP(1));
   LM(matf(n, 1, 0.0f), init, denl, sigma, a, n_max_iters, 1e-5);
+  a(0,0) = fmod(fmod(a(0,0)+CV_PI*0.5f, CV_PI)+CV_PI, CV_PI)-CV_PI*0.5f;
   e_out(0, 0) = a(1, 0);
   e_out(1, 0) = a(2, 0);
   e_out(2, 0) = 1.0f;
@@ -511,8 +530,8 @@ public:
   typedef TrackedPoint Point;
   typedef pair<matf, matf> Model;
   typedef int Normalizer;
-  //static const size_t s = 5;
-  static const size_t s = 3;
+  static const size_t s = 5;
+  //static const size_t s = 3;
   matf e_init, R_init;
   RansacParametersGetEpipoleNL(const matf & e_init_p = matf(0,0),
 			       const matf & R_init_p = matf(0,0)) {
@@ -533,7 +552,8 @@ public:
     model.first = e_init;
     //resizeMat(model.second, 3, 3);
     model.second = R_init;
-    GetEpipoleNLElem4(sample, points, model.first, model.second, 1000);
+    //GetEpipoleNLElem4(sample, points, model.first, model.second, 10);
+    GetEpipoleNLElem(sample, points, model.first, model.second, 1000);
   }
   float getDist(const Model & model, const Point & p) {
     const matf d = (model.second * p.getP(0)).cross(p.getP(1));
@@ -553,19 +573,8 @@ public:
   }
 };
 
-void GetEpipoleNL(const vector<TrackedPoint> & points, matf & K, float ransacMaxDist,
+void GetEpipoleNL(const vector<TrackedPoint> & pointsN, matf & K, float ransacMaxDist,
 		  vector<TrackedPoint> & inliers, matf & R_out, matf & e_out, float p) {
-  vector<TrackedPoint> pointsN;
-  matf Kinv = K.inv();
-  matf v(3,1), u(3,1);
-  for (size_t i = 0; i < points.size(); ++i) {
-    const TrackedPoint & p = points[i];
-    v(0,0) = p.x1; v(1,0) = p.y1; v(2,0) = 1.0f;
-    u(0,0) = p.x2; u(1,0) = p.y2; u(2,0) = 1.0f;
-    v = Kinv * v; v = v/v(2,0);
-    u = Kinv * u; u = u/u(2,0);
-    pointsN.push_back(TrackedPoint(v(0,0), v(1,0), u(0,0), u(1,0)));
-  }
   inliers.clear();
   pair<matf, matf> model;
   model.first = matf(3,1);
@@ -573,19 +582,6 @@ void GetEpipoleNL(const vector<TrackedPoint> & points, matf & K, float ransacMax
   RansacParametersGetEpipoleNL parameters(e_out, R_out);
   Ransac(parameters, pointsN, model, inliers, ransacMaxDist, p);
 
-  /*vector<size_t> sample(points.size());
-  GetRandomSample(sample, 0, points.size());
-  parameters.getModel(sample, pointsN, model);
-  inliers = pointsN;*/
-
-  for (size_t i = 0; i < inliers.size(); ++i) {
-    const TrackedPoint & p = inliers[i];
-    v(0,0) = p.x1; v(1,0) = p.y1; v(2,0) = 1.0f;
-    u(0,0) = p.x2; u(1,0) = p.y2; u(2,0) = 1.0f;
-    v = K * v; v = v/v(2,0);
-    u = K * u; u = u/u(2,0);
-    inliers[i] = TrackedPoint(v(0,0), v(1,0), u(0,0), u(1,0));
-  }
   model.first.copyTo(e_out);
   model.second.copyTo(R_out);
 }

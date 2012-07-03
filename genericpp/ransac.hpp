@@ -22,7 +22,7 @@ public:
 };		       
 
 template<typename params>
-void Ransac(params & parameters, std::vector<typename params::Point> & points,
+void Ransac(params & parameters, const std::vector<typename params::Point> & points,
 	    typename params::Model & M_out, vector<typename params::Point> & inliers,
 	    float ransacMaxDist, float p = 0.99f) {
   inliers.clear();
