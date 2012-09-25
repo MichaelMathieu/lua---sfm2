@@ -6,20 +6,14 @@ extern "C" {
 #include "genericpp/sfm.cpp"
 
 #define torch_(NAME) TH_CONCAT_3(torch_, Real, NAME)
-#define torch_string_(NAME) TH_CONCAT_STRING_3(torch., Real, NAME)
+#define torch_Tensor TH_CONCAT_STRING_3(torch., Real, Tensor)
 #define libsfm2_(NAME) TH_CONCAT_3(libsfm2_, Real, NAME)
-
-static const void* torch_FloatTensor_id = NULL;
-static const void* torch_DoubleTensor_id = NULL;
 
 #include "generic/sfm.cpp"
 #include "THGenerateFloatTypes.h"
 
 LUA_EXTERNC DLL_EXPORT int luaopen_libsfm2(lua_State *L)
 {
-  torch_FloatTensor_id = luaT_checktypename2id(L, "torch.FloatTensor");
-  torch_DoubleTensor_id = luaT_checktypename2id(L, "torch.DoubleTensor");
-
   libsfm2_FloatMain_init(L);
   libsfm2_DoubleMain_init(L);
 

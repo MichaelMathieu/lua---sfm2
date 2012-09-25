@@ -35,7 +35,7 @@ static const luaL_reg libsfm2_(Main__) [] =
 };
 
 LUA_EXTERNC DLL_EXPORT int libsfm2_(Main_init) (lua_State *L) {
-  luaT_pushmetaclass(L, torch_(Tensor_id));
+  luaT_pushmetatable(L, torch_Tensor);
   luaT_registeratname(L, libsfm2_(Main__), "libsfm2");
   return 1;
 }
