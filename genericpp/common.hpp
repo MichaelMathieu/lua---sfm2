@@ -5,11 +5,13 @@
 #include<cmath>
 #include<cassert>
 #include<iostream>
+#include<iomanip>
 #include<vector>
 #include<string>
 using namespace std;
 
 #include <opencv/cv.h>
+#include <opencv/cv.hpp>
 #include <opencv/highgui.h>
 using namespace cv;
 
