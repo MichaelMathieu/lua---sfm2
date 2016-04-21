@@ -235,10 +235,10 @@ static int GetEgoMotion2(lua_State *L) {
   T_out_cv(0,0) = T_out_cv(1,0) = 0.0f;
   T_out_cv(2,0) = 1.0f;
   ((matf)matf::eye(3,3)).copyTo(R_out_cv);
-  GetEpipoleNL(foundN, K_cv, 5*ransacMaxDist_p, inliers1, R_out_cv, T_out_cv, 0.99f);
-  GetEpipoleNL(inliers1, K_cv, 2.5*ransacMaxDist_p, inliers2, R_out_cv, T_out_cv, 0.99f);
-  GetEpipoleNL(inliers2, K_cv, ransacMaxDist_p, inliers, R_out_cv, T_out_cv, 0.99f);
-  //GetEpipoleNL(found, K_cv, ransacMaxDist_p, inliers, R_out_cv, T_out_cv, 0.99f);
+  GetEpipoleNL(foundN, K_cv, 5*ransacMaxDist_p, inliers1, R_out_cv, T_out_cv, 0.99f, 1000);
+  GetEpipoleNL(inliers1, K_cv, 2.5*ransacMaxDist_p, inliers2, R_out_cv, T_out_cv, 0.99f, 1000);
+  GetEpipoleNL(inliers2, K_cv, ransacMaxDist_p, inliers, R_out_cv, T_out_cv, 0.99f, 1000);
+  //GetEpipoleNL(found, K_cv, ransacMaxDist_p, inliers, R_out_cv, T_out_cv, 0.99f, 1000);
   R_out_cv = R_out_cv.inv();
 
   if (inliers_out.size() != 0) {

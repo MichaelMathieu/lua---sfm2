@@ -12,7 +12,7 @@ public:
   static const size_t s = 4; // minimal sample size
   void getModel(const std::vector<size_t> & sample,
 		const std::vector<Point> & points,
-		Model & model);
+		Model & model); // should return identity if not enough points
   float getDist(const Model & model, const Point & p);
   void Normalize(const std::vector<Point> & points,
 		 std::vector<Point> & points_out,
@@ -24,7 +24,7 @@ public:
 template<typename params>
 void Ransac(params & parameters, const std::vector<typename params::Point> & points,
 	    typename params::Model & M_out, vector<typename params::Point> & inliers,
-	    float ransacMaxDist, float p = 0.99f) {
+	    float ransacMaxDist, float p = 0.99f, size_t n_trials_max = 1000) {
   inliers.clear();
   typename params::Model M;
   vector<typename params::Point> pointsN;
@@ -37,7 +37,7 @@ void Ransac(params & parameters, const std::vector<typename params::Point> & poi
   int i_goods = 0;
   size_t n_goods;
   vector<size_t> sample((size_t)params::s);
-  for (i_trial = 0; i_trial < n_trials; ++i_trial) {
+  for (i_trial = 0; (i_trial < n_trials) && (i_trial < n_trials_max); ++i_trial) {
     vector<size_t> & goods = goods_v[i_goods];
     goods.clear();
     total_dist = 0;

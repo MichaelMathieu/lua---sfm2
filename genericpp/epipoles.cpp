@@ -553,7 +553,9 @@ public:
     //resizeMat(model.second, 3, 3);
     model.second = R_init;
     //GetEpipoleNLElem4(sample, points, model.first, model.second, 10);
-    GetEpipoleNLElem(sample, points, model.first, model.second, 1000);
+    if (points.size() >= s) {
+      GetEpipoleNLElem(sample, points, model.first, model.second, 1000);
+    }
   }
   float getDist(const Model & model, const Point & p) {
     const matf d = (model.second * p.getP(0)).cross(p.getP(1));
@@ -574,13 +576,14 @@ public:
 };
 
 void GetEpipoleNL(const vector<TrackedPoint> & pointsN, matf & K, float ransacMaxDist,
-		  vector<TrackedPoint> & inliers, matf & R_out, matf & e_out, float p) {
+		  vector<TrackedPoint> & inliers, matf & R_out, matf & e_out, float p,
+		  size_t ransac_n_trials) {
   inliers.clear();
   pair<matf, matf> model;
   model.first = matf(3,1);
   model.second = matf(3,3);
   RansacParametersGetEpipoleNL parameters(e_out, R_out);
-  Ransac(parameters, pointsN, model, inliers, ransacMaxDist, p);
+  Ransac(parameters, pointsN, model, inliers, ransacMaxDist, p, ransac_n_trials);
 
   model.first.copyTo(e_out);
   model.second.copyTo(R_out);
